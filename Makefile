@@ -3,6 +3,7 @@
 all: release
 opt: release
 unit: unittest
+imdb: third_party/imdb/data
 
 GENERATOR ?=
 FORCE_COLOR ?=
@@ -344,6 +345,11 @@ format-master:
 
 third_party/sqllogictest:
 	git clone --depth=1 --branch hawkfish-statistical-rounding https://github.com/cwida/sqllogictest.git third_party/sqllogictest
+
+third_party/imdb/data:
+	wget "http://homepages.cwi.nl/~boncz/job/imdb.tgz" -P third_party/imdb/data
+	tar -xzvf third_party/imdb/data/imdb.tgz -C third_party/imdb/data
+	rm third_party/imdb/data/imdb.tgz
 
 sqlite: release | third_party/sqllogictest
 	git --git-dir third_party/sqllogictest/.git pull
