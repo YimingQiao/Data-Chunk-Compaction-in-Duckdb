@@ -1152,5 +1152,5 @@ endif ()
 
 # I use IMDB join order benchmark to test the performance of join order optimization
 add_executable(imdb_job imdb_main.cpp)
-target_link_libraries(imdb_job imdb duckdb_static)
+target_link_libraries(imdb_job imdb duckdb)
 
