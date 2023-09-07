@@ -6,15 +6,23 @@
 class IMDB {
 public:
 	explicit IMDB(duckdb::DuckDB db) : connection_(db), client_(db.instance), config_() {
-		auto result = Query("SHOW TABLES", false);
+		auto result = Query("SHOW TABLES", nullptr, false);
 		if (result->RowCount() == 0) {
 			std::cout << "Database is empty, importing data...\n";
 			imdb::dbgen(db);
+			std::cout << "Database imported.\n";
 		}
 	}
 
-	std::unique_ptr<duckdb::MaterializedQueryResult> Query(const std::string &query, bool print = true) {
+	std::unique_ptr<duckdb::MaterializedQueryResult> Query(const std::string &query, double *time, bool print = true) {
+		// Measure the time.
+		auto start = std::chrono::high_resolution_clock::now();
 		auto result = connection_.Query(query);
+		auto end = std::chrono::high_resolution_clock::now();
+		if (time != nullptr) {
+			// time is measured in second.
+			*time = std::chrono::duration_cast<std::chrono::duration<double>>(end - start).count();
+		}
 
 		if (!result->HasError()) {
 			if (print) {
@@ -43,15 +51,78 @@ private:
 	}
 };
 
+void IMDBFinder(IMDB &imdb);
+
 int main() {
 	std::string db_name = "./third_party/imdb/data/imdb.db";
+	// nullptr means in-memory database.
 	duckdb::DuckDB db(db_name);
 	IMDB imdb(db);
 
-	// IMDB queries, the query idx starts from 1.
-	std::string query = imdb::get_query(1);
-	std::cout << "Query: " << query << "\n";
-	imdb.Query(query);
+	imdb.Query("SET threads TO 16;", nullptr, false);
+	std::vector<size_t> query_id = {21};
+	for (auto id : query_id) {
+		std::string query = imdb::get_query(id);
+		imdb.Query(query, nullptr, false);
+	}
 
 	return 0;
+}
+
+void IMDBFinder(IMDB &imdb) {  // Number of Queries
+	int num_queries = 114;
+
+	std::vector<uint32_t> interesting_queries;
+	for (size_t i = 1; i <= num_queries; ++i)
+		interesting_queries.push_back(i);
+
+	double time;
+	std::vector<double> single_thread_times;
+	std::vector<double> multi_thread_times;
+	std::vector<size_t> promising_queries;
+
+	for (auto i : interesting_queries) {
+		std::string query = imdb::get_query(i);
+		std::cout << "----------------------------------------------------------- " + std::to_string(i) +
+		                 " -----------------------------------------------------------\n";
+
+		// warm up
+		imdb.Query(query, nullptr, false);
+
+		// single thread
+		imdb.Query("SET threads TO 1;", nullptr, false);
+		imdb.Query(query, &time, false);
+		single_thread_times.push_back(time);
+
+		// multi thread
+		imdb.Query("SET threads TO 16;", nullptr, false);
+		imdb.Query(query, &time, false);
+		multi_thread_times.push_back(time);
+
+		if ((single_thread_times.back() - multi_thread_times.back()) > 0.05) {
+			promising_queries.push_back(i);
+			std::cout << "Query " << i << " single thread time: " << single_thread_times.back() << " s\t"
+			          << " multi thread time: " << multi_thread_times.back() << " s\t"
+			          << " Promising\n";
+		} else {
+			std::cout << "Query " << i << " single thread time: " << single_thread_times.back() << " s\t"
+			          << " multi thread time: " << multi_thread_times.back() << " s\n";
+		}
+	}
+
+	for (auto i : promising_queries) {
+		std::cout << "----------------------------------------------------------- Promising queries " +
+		                 std::to_string(i) + "-----------------------------------------------------------\n";
+		std::string query = imdb::get_query(i);
+		std::cout << query << "\n";
+
+		// warm up
+		imdb.Query(query, nullptr, false);
+
+		imdb.Query("SET threads TO 1;", nullptr, false);
+		imdb.Query(query, nullptr, true);
+
+		imdb.Query("SET threads TO 16;", nullptr, false);
+		imdb.Query(query, nullptr, true);
+	}
 }

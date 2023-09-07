@@ -63,7 +63,7 @@ public:
 	explicit RadixHTGlobalState(ClientContext &context)
 	    : is_empty(true), multi_scan(true), partitioned(false),
 	      partition_info(make_uniq<RadixPartitionInfo>(
-	          MinValue<idx_t>(MAX_RADIX_PARTITIONS, TaskScheduler::GetScheduler(context).NumberOfThreads()))) {
+	          MinValue<idx_t>(MAX_RADIX_PARTITIONS, TaskScheduler::GetScheduler(context).NumberOfThreadsForOperators()))) {
 	}
 
 	vector<unique_ptr<PartitionableHashTable>> intermediate_hts;
@@ -464,7 +464,7 @@ void RadixPartitionedHashTable::ScheduleRepartitionTasks(Executor &executor, con
 	}
 
 	// Schedule tasks equal to number of therads
-	const idx_t num_threads = TaskScheduler::GetScheduler(executor.context).NumberOfThreads();
+	const idx_t num_threads = TaskScheduler::GetScheduler(executor.context).NumberOfThreadsForOperators();
 	for (idx_t i = 0; i < num_threads; i++) {
 		tasks.emplace_back(make_shared<RadixAggregateRepartitionTask>(executor, event, gstate, num_partitions_before));
 	}
@@ -525,7 +525,7 @@ void RadixPartitionedHashTable::GetRepartitionInfo(ClientContext &context, Globa
 
 	// Switch to out-of-core finalize at ~60%
 	const auto max_ht_size = double(0.6) * BufferManager::GetBufferManager(context).GetMaxMemory();
-	const idx_t n_threads = PreviousPowerOfTwo(TaskScheduler::GetScheduler(context).NumberOfThreads());
+	const idx_t n_threads = PreviousPowerOfTwo(TaskScheduler::GetScheduler(context).NumberOfThreadsForOperators());
 	D_ASSERT(IsPowerOfTwo(n_threads));
 	if (!context.config.force_external && total_size < max_ht_size) {
 		// In-memory finalize

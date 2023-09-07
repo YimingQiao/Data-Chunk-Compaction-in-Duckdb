@@ -37,7 +37,7 @@ void ReadCSVData::FinalizeRead(ClientContext &context) {
 	bool complex_options = options.delimiter.size() > 1 || options.escape.size() > 1 || options.quote.size() > 1;
 	bool not_supported_options = options.null_padding;
 
-	auto number_of_threads = TaskScheduler::GetScheduler(context).NumberOfThreads();
+	auto number_of_threads = TaskScheduler::GetScheduler(context).NumberOfThreadsForOperators();
 	if (options.parallel_mode != ParallelMode::PARALLEL && int64_t(files.size() * 2) >= number_of_threads) {
 		single_threaded = true;
 	}

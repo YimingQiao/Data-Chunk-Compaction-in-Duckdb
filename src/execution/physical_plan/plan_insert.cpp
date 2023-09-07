@@ -50,7 +50,7 @@ bool PhysicalPlanGenerator::PreserveInsertionOrder(PhysicalOperator &plan) {
 bool PhysicalPlanGenerator::UseBatchIndex(ClientContext &context, PhysicalOperator &plan) {
 	// TODO: always preserve order if query contains ORDER BY
 	auto &scheduler = TaskScheduler::GetScheduler(context);
-	if (scheduler.NumberOfThreads() == 1) {
+	if (scheduler.NumberOfThreadsForOperators() == 1) {
 		// batch index usage only makes sense if we are using multiple threads
 		return false;
 	}
@@ -69,7 +69,7 @@ unique_ptr<PhysicalOperator> DuckCatalog::PlanInsert(ClientContext &context, Log
                                                      unique_ptr<PhysicalOperator> plan) {
 	bool parallel_streaming_insert = !PhysicalPlanGenerator::PreserveInsertionOrder(context, *plan);
 	bool use_batch_index = PhysicalPlanGenerator::UseBatchIndex(context, *plan);
-	auto num_threads = TaskScheduler::GetScheduler(context).NumberOfThreads();
+	auto num_threads = TaskScheduler::GetScheduler(context).NumberOfThreadsForOperators();
 	if (op.return_chunk) {
 		// not supported for RETURNING (yet?)
 		parallel_streaming_insert = false;

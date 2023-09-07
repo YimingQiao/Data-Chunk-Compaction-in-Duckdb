@@ -35,4 +35,4 @@ void PipelineInitializeEvent::Schedule() {
 void PipelineInitializeEvent::FinishEvent() {
 }
 
-} // namespace duckdb
+}  // namespace duckdb

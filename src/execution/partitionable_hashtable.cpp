@@ -6,9 +6,9 @@ namespace duckdb {
 
 RadixPartitionInfo::RadixPartitionInfo(const idx_t n_partitions_upper_bound)
     : n_partitions(PreviousPowerOfTwo(n_partitions_upper_bound)),
-      radix_bits(RadixPartitioning::RadixBits(n_partitions)), radix_mask(RadixPartitioning::Mask(radix_bits)),
+      radix_bits(RadixPartitioning::RadixBits(n_partitions)),
+      radix_mask(RadixPartitioning::Mask(radix_bits)),
       radix_shift(RadixPartitioning::Shift(radix_bits)) {
-
 	D_ASSERT(radix_bits <= RadixPartitioning::MAX_RADIX_BITS);
 	D_ASSERT(n_partitions > 0);
 	D_ASSERT(n_partitions == RadixPartitioning::NumberOfPartitions(radix_bits));
@@ -19,10 +19,15 @@ PartitionableHashTable::PartitionableHashTable(ClientContext &context, Allocator
                                                RadixPartitionInfo &partition_info_p, vector<LogicalType> group_types_p,
                                                vector<LogicalType> payload_types_p,
                                                vector<BoundAggregateExpression *> bindings_p)
-    : context(context), allocator(allocator), group_types(std::move(group_types_p)),
-      payload_types(std::move(payload_types_p)), bindings(std::move(bindings_p)), is_partitioned(false),
-      partition_info(partition_info_p), hashes(LogicalType::HASH), hashes_subset(LogicalType::HASH) {
-
+    : context(context),
+      allocator(allocator),
+      group_types(std::move(group_types_p)),
+      payload_types(std::move(payload_types_p)),
+      bindings(std::move(bindings_p)),
+      is_partitioned(false),
+      partition_info(partition_info_p),
+      hashes(LogicalType::HASH),
+      hashes_subset(LogicalType::HASH) {
 	sel_vectors.resize(partition_info.n_partitions);
 	sel_vector_sizes.resize(partition_info.n_partitions);
 	group_subset.Initialize(allocator, group_types);
@@ -51,7 +56,7 @@ bool OverMemoryLimit(ClientContext &context, const bool is_partitioned, const Ra
                      const GroupedAggregateHashTable &ht) {
 	const auto n_partitions = is_partitioned ? partition_info.n_partitions : 1;
 	const auto max_memory = BufferManager::GetBufferManager(context).GetMaxMemory();
-	const auto num_threads = TaskScheduler::GetScheduler(context).NumberOfThreads();
+	const auto num_threads = TaskScheduler::GetScheduler(context).NumberOfThreadsForOperators();
 	const auto memory_per_partition = 0.6 * max_memory / num_threads / n_partitions;
 	return ht.TotalSize() > memory_per_partition;
 }
@@ -204,4 +209,4 @@ void PartitionableHashTable::Append(GroupedAggregateHashTable &ht) {
 	unpartitioned_hts.back()->Append(ht);
 }
 
-} // namespace duckdb
+}  // namespace duckdb

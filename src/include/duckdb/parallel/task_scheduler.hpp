@@ -8,11 +8,11 @@
 
 #pragma once
 
+#include "duckdb/common/atomic.hpp"
 #include "duckdb/common/common.hpp"
 #include "duckdb/common/mutex.hpp"
 #include "duckdb/common/vector.hpp"
 #include "duckdb/parallel/task.hpp"
-#include "duckdb/common/atomic.hpp"
 
 namespace duckdb {
 
@@ -63,6 +63,10 @@ public:
 	void SetThreads(int32_t n);
 	//! Returns the number of threads
 	DUCKDB_API int32_t NumberOfThreads();
+	//! Returns the number of threads for operators
+	int32_t NumberOfThreadsForOperators() {
+		return 1;
+	}
 
 	//! Send signals to n threads, signalling for them to wake up and attempt to execute a task
 	void Signal(idx_t n);
@@ -90,4 +94,4 @@ private:
 	atomic<idx_t> allocator_flush_threshold;
 };
 
-} // namespace duckdb
+}  // namespace duckdb

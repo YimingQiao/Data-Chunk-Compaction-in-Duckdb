@@ -39,28 +39,31 @@ public:
 			auto res = pipeline_executor->Execute(PARTIAL_CHUNK_COUNT);
 
 			switch (res) {
-			case PipelineExecuteResult::NOT_FINISHED:
-				return TaskExecutionResult::TASK_NOT_FINISHED;
-			case PipelineExecuteResult::INTERRUPTED:
-				return TaskExecutionResult::TASK_BLOCKED;
-			case PipelineExecuteResult::FINISHED:
-				break;
+				case PipelineExecuteResult::NOT_FINISHED:
+					return TaskExecutionResult::TASK_NOT_FINISHED;
+				case PipelineExecuteResult::INTERRUPTED:
+					return TaskExecutionResult::TASK_BLOCKED;
+				case PipelineExecuteResult::FINISHED:
+					break;
 			}
 		} else {
 			auto res = pipeline_executor->Execute();
 			switch (res) {
-			case PipelineExecuteResult::NOT_FINISHED:
-				throw InternalException("Execute without limit should not return NOT_FINISHED");
-			case PipelineExecuteResult::INTERRUPTED:
-				return TaskExecutionResult::TASK_BLOCKED;
-			case PipelineExecuteResult::FINISHED:
-				break;
+				case PipelineExecuteResult::NOT_FINISHED:
+					throw InternalException("Execute without limit should not return NOT_FINISHED");
+				case PipelineExecuteResult::INTERRUPTED:
+					return TaskExecutionResult::TASK_BLOCKED;
+				case PipelineExecuteResult::FINISHED:
+					break;
 			}
 		}
 
 		event->FinishTask();
 		pipeline_executor.reset();
 		return TaskExecutionResult::TASK_FINISHED;
+	}
+	std::string Name() override {
+		return "[PipelineTask]\n" + pipeline.ToString();
 	}
 };
 
@@ -91,6 +94,10 @@ void Pipeline::ScheduleSequentialTask(shared_ptr<Event> &event) {
 }
 
 bool Pipeline::ScheduleParallel(shared_ptr<Event> &event) {
+	// Prevent parallelization of single operator.
+	// And, if this setting will hurt the multi pipeline parallel.
+	return false;
+
 	// check if the sink, source and all intermediate operators support parallelism
 	if (!sink->ParallelSink()) {
 		return false;
@@ -156,7 +163,7 @@ void Pipeline::Schedule(shared_ptr<Event> &event) {
 bool Pipeline::LaunchScanTasks(shared_ptr<Event> &event, idx_t max_threads) {
 	// split the scan up into parts and schedule the parts
 	auto &scheduler = TaskScheduler::GetScheduler(executor.context);
-	idx_t active_threads = scheduler.NumberOfThreads();
+	idx_t active_threads = scheduler.NumberOfThreadsForOperators();
 	if (max_threads > active_threads) {
 		max_threads = active_threads;
 	}
@@ -330,4 +337,4 @@ vector<reference<PhysicalOperator>> PipelineBuildState::GetPipelineOperators(Pip
 	return pipeline.operators;
 }
 
-} // namespace duckdb
+}  // namespace duckdb

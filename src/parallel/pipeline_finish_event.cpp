@@ -1,4 +1,5 @@
 #include "duckdb/parallel/pipeline_finish_event.hpp"
+
 #include "duckdb/execution/executor.hpp"
 #include "duckdb/parallel/interrupt.hpp"
 
@@ -46,6 +47,10 @@ public:
 		return TaskExecutionResult::TASK_FINISHED;
 	}
 
+	std::string Name() override {
+		return "[PipelineFinishTask]\n" + std::string(pipeline.ToString());
+	}
+
 private:
 #ifdef DUCKDB_DEBUG_ASYNC_SINK_SOURCE
 	//! Debugging state: number of times blocked
@@ -67,4 +72,4 @@ void PipelineFinishEvent::Schedule() {
 void PipelineFinishEvent::FinishEvent() {
 }
 
-} // namespace duckdb
+}  // namespace duckdb

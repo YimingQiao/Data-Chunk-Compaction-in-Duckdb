@@ -6,10 +6,11 @@
 #include "duckdb/main/database.hpp"
 
 #ifndef DUCKDB_NO_THREADS
+#include <thread>
+
 #include "concurrentqueue.h"
 #include "duckdb/common/thread.hpp"
 #include "lightweightsemaphore.h"
-#include <thread>
 #else
 #include <queue>
 #endif
@@ -96,7 +97,8 @@ ProducerToken::~ProducerToken() {
 }
 
 TaskScheduler::TaskScheduler(DatabaseInstance &db)
-    : db(db), queue(make_uniq<ConcurrentQueue>()),
+    : db(db),
+      queue(make_uniq<ConcurrentQueue>()),
       allocator_flush_threshold(db.config.options.allocator_flush_threshold) {
 }
 
@@ -136,19 +138,27 @@ void TaskScheduler::ExecuteForever(atomic<bool> *marker) {
 		// wait for a signal with a timeout
 		queue->semaphore.wait();
 		if (queue->q.try_dequeue(task)) {
+			std::string task_name = task->Name();
+			if (!task_name.empty()) {
+				auto now = std::chrono::system_clock::now();
+				auto duration = std::chrono::duration_cast<std::chrono::microseconds>(now.time_since_epoch());
+				Printer::Print("Current Time: " + std::to_string((duration.count() - 1693978420000000) / 1e6) + " s");
+				Printer::Print(task_name);
+			}
+
 			auto execute_result = task->Execute(TaskExecutionMode::PROCESS_ALL);
 
 			switch (execute_result) {
-			case TaskExecutionResult::TASK_FINISHED:
-			case TaskExecutionResult::TASK_ERROR:
-				task.reset();
-				break;
-			case TaskExecutionResult::TASK_NOT_FINISHED:
-				throw InternalException("Task should not return TASK_NOT_FINISHED in PROCESS_ALL mode");
-			case TaskExecutionResult::TASK_BLOCKED:
-				task->Deschedule();
-				task.reset();
-				break;
+				case TaskExecutionResult::TASK_FINISHED:
+				case TaskExecutionResult::TASK_ERROR:
+					task.reset();
+					break;
+				case TaskExecutionResult::TASK_NOT_FINISHED:
+					throw InternalException("Task should not return TASK_NOT_FINISHED in PROCESS_ALL mode");
+				case TaskExecutionResult::TASK_BLOCKED:
+					task->Deschedule();
+					task.reset();
+					break;
 			}
 
 			// Flushes the outstanding allocator's outstanding allocations
@@ -172,17 +182,17 @@ idx_t TaskScheduler::ExecuteTasks(atomic<bool> *marker, idx_t max_tasks) {
 		auto execute_result = task->Execute(TaskExecutionMode::PROCESS_ALL);
 
 		switch (execute_result) {
-		case TaskExecutionResult::TASK_FINISHED:
-		case TaskExecutionResult::TASK_ERROR:
-			task.reset();
-			completed_tasks++;
-			break;
-		case TaskExecutionResult::TASK_NOT_FINISHED:
-			throw InternalException("Task should not return TASK_NOT_FINISHED in PROCESS_ALL mode");
-		case TaskExecutionResult::TASK_BLOCKED:
-			task->Deschedule();
-			task.reset();
-			break;
+			case TaskExecutionResult::TASK_FINISHED:
+			case TaskExecutionResult::TASK_ERROR:
+				task.reset();
+				completed_tasks++;
+				break;
+			case TaskExecutionResult::TASK_NOT_FINISHED:
+				throw InternalException("Task should not return TASK_NOT_FINISHED in PROCESS_ALL mode");
+			case TaskExecutionResult::TASK_BLOCKED:
+				task->Deschedule();
+				task.reset();
+				break;
 		}
 	}
 	return completed_tasks;
@@ -202,16 +212,16 @@ void TaskScheduler::ExecuteTasks(idx_t max_tasks) {
 		try {
 			auto execute_result = task->Execute(TaskExecutionMode::PROCESS_ALL);
 			switch (execute_result) {
-			case TaskExecutionResult::TASK_FINISHED:
-			case TaskExecutionResult::TASK_ERROR:
-				task.reset();
-				break;
-			case TaskExecutionResult::TASK_NOT_FINISHED:
-				throw InternalException("Task should not return TASK_NOT_FINISHED in PROCESS_ALL mode");
-			case TaskExecutionResult::TASK_BLOCKED:
-				task->Deschedule();
-				task.reset();
-				break;
+				case TaskExecutionResult::TASK_FINISHED:
+				case TaskExecutionResult::TASK_ERROR:
+					task.reset();
+					break;
+				case TaskExecutionResult::TASK_NOT_FINISHED:
+					throw InternalException("Task should not return TASK_NOT_FINISHED in PROCESS_ALL mode");
+				case TaskExecutionResult::TASK_BLOCKED:
+					task->Deschedule();
+					task.reset();
+					break;
 			}
 		} catch (...) {
 			return;
@@ -299,4 +309,4 @@ void TaskScheduler::SetThreadsInternal(int32_t n) {
 #endif
 }
 
-} // namespace duckdb
+}  // namespace duckdb
