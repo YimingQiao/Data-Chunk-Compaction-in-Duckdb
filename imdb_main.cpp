@@ -54,16 +54,18 @@ private:
 void IMDBFinder(IMDB &imdb);
 
 int main() {
-	std::string db_name = "./third_party/imdb/data/imdb.db";
+	std::string db_name = "third_party/imdb/data/imdb.db";
 	// nullptr means in-memory database.
 	duckdb::DuckDB db(db_name);
 	IMDB imdb(db);
 
-	imdb.Query("SET threads TO 16;", nullptr, false);
+	imdb.Query("SET threads TO 64;", nullptr, false);
 	std::vector<size_t> query_id = {21};
+	double time;
 	for (auto id : query_id) {
 		std::string query = imdb::get_query(id);
-		imdb.Query(query, nullptr, false);
+		imdb.Query(query, &time, false);
+		std::cout << "Query " << id << " time: " << time << " s\n";
 	}
 
 	return 0;

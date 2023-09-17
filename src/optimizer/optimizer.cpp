@@ -4,6 +4,7 @@
 #include "duckdb/main/client_context.hpp"
 #include "duckdb/main/config.hpp"
 #include "duckdb/main/query_profiler.hpp"
+#include "duckdb/optimizer/bushy_join_order/bushy_order_optimizer.hpp"
 #include "duckdb/optimizer/column_lifetime_optimizer.hpp"
 #include "duckdb/optimizer/common_aggregate_optimizer.hpp"
 #include "duckdb/optimizer/compressed_materialization.hpp"
@@ -79,11 +80,14 @@ void Optimizer::Verify(LogicalOperator &op) {
 unique_ptr<LogicalOperator> Optimizer::Optimize(unique_ptr<LogicalOperator> plan_p) {
 	Verify(*plan_p);
 
+	Printer::Print("Input Logical Plan: ");
+	plan_p->Print();
+
 	switch (plan_p->type) {
-	case LogicalOperatorType::LOGICAL_TRANSACTION:
-		return plan_p; // skip optimizing simple & often-occurring plans unaffected by rewrites
-	default:
-		break;
+		case LogicalOperatorType::LOGICAL_TRANSACTION:
+			return plan_p;  // skip optimizing simple & often-occurring plans unaffected by rewrites
+		default:
+			break;
 	}
 
 	this->plan = std::move(plan_p);
@@ -123,6 +127,12 @@ unique_ptr<LogicalOperator> Optimizer::Optimize(unique_ptr<LogicalOperator> plan
 	// this also rewrites cross products + filters into joins and performs filter pushdowns
 	RunOptimizer(OptimizerType::JOIN_ORDER, [&]() {
 		JoinOrderOptimizer optimizer(context);
+		plan = optimizer.Optimize(std::move(plan));
+	});
+
+	// In this part, we perform the bushy join ordering optimization
+	RunOptimizer(OptimizerType::JOIN_ORDER_BUSHY, [&]() {
+		BushyOrderOptimizer optimizer(context);
 		plan = optimizer.Optimize(std::move(plan));
 	});
 
@@ -205,4 +215,4 @@ unique_ptr<LogicalOperator> Optimizer::Optimize(unique_ptr<LogicalOperator> plan
 	return std::move(plan);
 }
 
-} // namespace duckdb
+}  // namespace duckdb

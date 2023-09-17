@@ -96,7 +96,7 @@ void Pipeline::ScheduleSequentialTask(shared_ptr<Event> &event) {
 bool Pipeline::ScheduleParallel(shared_ptr<Event> &event) {
 	// Prevent parallelization of single operator.
 	// And, if this setting will hurt the multi pipeline parallel.
-	return false;
+	// return false;
 
 	// check if the sink, source and all intermediate operators support parallelism
 	if (!sink->ParallelSink()) {

@@ -8,11 +8,11 @@
 
 #pragma once
 
-#include "duckdb/parser/base_expression.hpp"
-#include "duckdb/common/vector.hpp"
 #include "duckdb/common/string_util.hpp"
-#include "duckdb/parser/qualified_name.hpp"
+#include "duckdb/common/vector.hpp"
+#include "duckdb/parser/base_expression.hpp"
 #include "duckdb/parser/expression_util.hpp"
+#include "duckdb/parser/qualified_name.hpp"
 
 namespace duckdb {
 class Serializer;
@@ -25,11 +25,10 @@ class FormatSerializer;
 //!  The ParsedExpression class is a base class that can represent any expression
 //!  part of a SQL statement.
 /*!
- The ParsedExpression class is a base class that can represent any expression
- part of a SQL statement. This is, for example, a column reference in a SELECT
- clause, but also operators, aggregates or filters. The Expression is emitted by the parser and does not contain any
- information about bindings to the catalog or to the types. ParsedExpressions are transformed into regular Expressions
- in the Binder.
+ The ParsedExpression class is a base class that can represent any expression part of a SQL statement. This is, for
+ example, a column reference in a SELECT clause, but also operators, aggregates or filters. The Expression is emitted by
+ the parser and does not contain any information about bindings to the catalog or to the types. ParsedExpressions are
+ transformed into regular Expressions in the Binder.
  */
 class ParsedExpression : public BaseExpression {
 public:
@@ -79,4 +78,4 @@ protected:
 	}
 };
 
-} // namespace duckdb
+}  // namespace duckdb
