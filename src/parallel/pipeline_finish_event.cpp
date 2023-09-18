@@ -1,5 +1,7 @@
 #include "duckdb/parallel/pipeline_finish_event.hpp"
 
+#include <thread>
+
 #include "duckdb/execution/executor.hpp"
 #include "duckdb/parallel/interrupt.hpp"
 
@@ -47,8 +49,24 @@ public:
 		return TaskExecutionResult::TASK_FINISHED;
 	}
 
-	std::string Name() override {
-		return "[PipelineFinishTask]\n" + std::string(pipeline.ToString());
+	void TaskSignal() override {
+		std::thread::id thread_id = std::this_thread::get_id();
+		std::ostringstream oss;
+		oss << thread_id;
+		std::string thread_id_str = oss.str();
+
+		auto now = std::chrono::system_clock::now();
+		auto duration = std::chrono::duration_cast<std::chrono::microseconds>(now.time_since_epoch());
+		std::string str = "[" + thread_id_str + "] [PipelineFinishTask] Interrupted at time: " +
+		                  std::to_string((duration.count() - 1693978421000000) / 1e6) + " s";
+		if (pipeline.GetSink()->type == PhysicalOperatorType::HASH_JOIN &&
+		    pipeline.GetSource()->type == PhysicalOperatorType::TABLE_SCAN && pipeline.GetOperators().size() == 2) {
+			str += " [Build Hash Table]\n" + pipeline.GetSource()->ToString();
+		} else {
+			str += "\n" + pipeline.ToString();
+		}
+		Printer::Print(str);
+		str += "1";
 	}
 
 private:

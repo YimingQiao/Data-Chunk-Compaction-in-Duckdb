@@ -1,5 +1,7 @@
 #include "duckdb/parallel/pipeline.hpp"
 
+#include <thread>
+
 #include "duckdb/common/algorithm.hpp"
 #include "duckdb/common/printer.hpp"
 #include "duckdb/common/tree_renderer.hpp"
@@ -62,8 +64,25 @@ public:
 		pipeline_executor.reset();
 		return TaskExecutionResult::TASK_FINISHED;
 	}
-	std::string Name() override {
-		return "[PipelineTask]\n" + pipeline.ToString();
+
+	void TaskSignal() override {
+		std::thread::id thread_id = std::this_thread::get_id();
+		std::ostringstream oss;
+		oss << thread_id;
+		std::string thread_id_str = oss.str();
+
+		auto now = std::chrono::system_clock::now();
+		auto duration = std::chrono::duration_cast<std::chrono::microseconds>(now.time_since_epoch());
+		std::string str = "[" + thread_id_str + "] [PipelineTask] Interrupted at time: " +
+		                  std::to_string((duration.count() - 1693978421000000) / 1e6) + " s";
+		if (pipeline.GetSink()->type == PhysicalOperatorType::HASH_JOIN &&
+		    pipeline.GetSource()->type == PhysicalOperatorType::TABLE_SCAN && pipeline.GetOperators().size() == 2) {
+			str += " [Build Hash Table]\n" + pipeline.GetSource()->ToString();
+		} else {
+			str += "\n" + pipeline.ToString();
+		}
+		Printer::Print(str);
+		str += "1";
 	}
 };
 
@@ -96,7 +115,7 @@ void Pipeline::ScheduleSequentialTask(shared_ptr<Event> &event) {
 bool Pipeline::ScheduleParallel(shared_ptr<Event> &event) {
 	// Prevent parallelization of single operator.
 	// And, if this setting will hurt the multi pipeline parallel.
-	// return false;
+	return false;
 
 	// check if the sink, source and all intermediate operators support parallelism
 	if (!sink->ParallelSink()) {

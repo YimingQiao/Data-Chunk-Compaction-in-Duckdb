@@ -46,7 +46,8 @@ public:
 		throw InternalException("Cannot reschedule task of base Task class");
 	}
 
-	virtual std::string Name() = 0;
+	virtual void TaskSignal() {
+	}
 };
 
 //! Execute a task within an executor, including exception handling
@@ -65,9 +66,6 @@ public:
 public:
 	virtual TaskExecutionResult ExecuteTask(TaskExecutionMode mode) = 0;
 	TaskExecutionResult Execute(TaskExecutionMode mode) override;
-	std::string Name() override {
-		return "";
-	}
 };
 
 }  // namespace duckdb

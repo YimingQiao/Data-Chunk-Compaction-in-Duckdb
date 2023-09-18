@@ -1154,3 +1154,7 @@ endif ()
 add_executable(imdb_job imdb_main.cpp)
 target_link_libraries(imdb_job imdb duckdb)
 
+# Create a simple student-domoritory database to test the parallel execution of bushy plan.
+add_executable(bushy_plan bushy_main.cpp)
+target_link_libraries(bushy_plan duckdb)
+

@@ -80,8 +80,8 @@ void Optimizer::Verify(LogicalOperator &op) {
 unique_ptr<LogicalOperator> Optimizer::Optimize(unique_ptr<LogicalOperator> plan_p) {
 	Verify(*plan_p);
 
-	Printer::Print("Input Logical Plan: ");
-	plan_p->Print();
+	//	Printer::Print("Input Logical Plan: ");
+	//	plan_p->Print();
 
 	switch (plan_p->type) {
 		case LogicalOperatorType::LOGICAL_TRANSACTION:
@@ -91,6 +91,13 @@ unique_ptr<LogicalOperator> Optimizer::Optimize(unique_ptr<LogicalOperator> plan
 	}
 
 	this->plan = std::move(plan_p);
+
+	// In this part, we perform the bushy join ordering optimization
+	//	RunOptimizer(OptimizerType::JOIN_ORDER_BUSHY, [&]() {
+	//		BushyOrderOptimizer optimizer(context);
+	//		plan = optimizer.Optimize(std::move(plan));
+	//	});
+
 	// first we perform expression rewrites using the ExpressionRewriter
 	// this does not change the logical plan structure, but only simplifies the expression trees
 	RunOptimizer(OptimizerType::EXPRESSION_REWRITER, [&]() { rewriter.VisitOperator(*plan); });
@@ -125,16 +132,10 @@ unique_ptr<LogicalOperator> Optimizer::Optimize(unique_ptr<LogicalOperator> plan
 
 	// then we perform the join ordering optimization
 	// this also rewrites cross products + filters into joins and performs filter pushdowns
-	RunOptimizer(OptimizerType::JOIN_ORDER, [&]() {
-		JoinOrderOptimizer optimizer(context);
-		plan = optimizer.Optimize(std::move(plan));
-	});
-
-	// In this part, we perform the bushy join ordering optimization
-	RunOptimizer(OptimizerType::JOIN_ORDER_BUSHY, [&]() {
-		BushyOrderOptimizer optimizer(context);
-		plan = optimizer.Optimize(std::move(plan));
-	});
+	//	RunOptimizer(OptimizerType::JOIN_ORDER, [&]() {
+	//		JoinOrderOptimizer optimizer(context);
+	//		plan = optimizer.Optimize(std::move(plan));
+	//	});
 
 	// rewrites UNNESTs in DelimJoins by moving them to the projection
 	RunOptimizer(OptimizerType::UNNEST_REWRITER, [&]() {
@@ -211,6 +212,12 @@ unique_ptr<LogicalOperator> Optimizer::Optimize(unique_ptr<LogicalOperator> plan
 	}
 
 	Planner::VerifyPlan(context, plan);
+
+	// if this plan is Select, we print it
+	//	if (plan->type != LogicalOperatorType::LOGICAL_INSERT && plan->type != LogicalOperatorType::LOGICAL_CREATE_TABLE
+	//&& 	    plan->type != LogicalOperatorType::LOGICAL_UPDATE && plan->type != LogicalOperatorType::LOGICAL_DELETE)
+	//{ 		Printer::Print("Input Logical Plan: "); 		plan->Print();
+	//	}
 
 	return std::move(plan);
 }

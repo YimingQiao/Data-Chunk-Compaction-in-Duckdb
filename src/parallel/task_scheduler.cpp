@@ -138,15 +138,6 @@ void TaskScheduler::ExecuteForever(atomic<bool> *marker) {
 		// wait for a signal with a timeout
 		queue->semaphore.wait();
 		if (queue->q.try_dequeue(task)) {
-			//			std::string task_name = task->Name();
-			//			if (!task_name.empty()) {
-			//				auto now = std::chrono::system_clock::now();
-			//				auto duration =
-			// std::chrono::duration_cast<std::chrono::microseconds>(now.time_since_epoch());
-			// Printer::Print("Current Time: " + std::to_string((duration.count() - 1693978420000000) / 1e6) + " s");
-			// Printer::Print(task_name);
-			//			}
-
 			auto execute_result = task->Execute(TaskExecutionMode::PROCESS_ALL);
 
 			switch (execute_result) {

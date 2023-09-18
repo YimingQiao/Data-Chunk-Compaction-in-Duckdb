@@ -1,9 +1,11 @@
 #include "duckdb/execution/executor.hpp"
 
+#include <algorithm>
+
 #include "duckdb/execution/execution_context.hpp"
 #include "duckdb/execution/operator/helper/physical_result_collector.hpp"
-#include "duckdb/execution/operator/set/physical_recursive_cte.hpp"
 #include "duckdb/execution/operator/set/physical_cte.hpp"
+#include "duckdb/execution/operator/set/physical_recursive_cte.hpp"
 #include "duckdb/execution/physical_operator.hpp"
 #include "duckdb/main/client_context.hpp"
 #include "duckdb/main/client_data.hpp"
@@ -15,8 +17,6 @@
 #include "duckdb/parallel/pipeline_initialize_event.hpp"
 #include "duckdb/parallel/task_scheduler.hpp"
 #include "duckdb/parallel/thread_context.hpp"
-
-#include <algorithm>
 
 namespace duckdb {
 
@@ -41,8 +41,10 @@ void Executor::AddEvent(shared_ptr<Event> event) {
 struct PipelineEventStack {
 	PipelineEventStack(Event &pipeline_initialize_event, Event &pipeline_event, Event &pipeline_finish_event,
 	                   Event &pipeline_complete_event)
-	    : pipeline_initialize_event(pipeline_initialize_event), pipeline_event(pipeline_event),
-	      pipeline_finish_event(pipeline_finish_event), pipeline_complete_event(pipeline_complete_event) {
+	    : pipeline_initialize_event(pipeline_initialize_event),
+	      pipeline_event(pipeline_event),
+	      pipeline_finish_event(pipeline_finish_event),
+	      pipeline_complete_event(pipeline_complete_event) {
 	}
 
 	Event &pipeline_initialize_event;
@@ -90,7 +92,7 @@ void Executor::SchedulePipeline(const shared_ptr<MetaPipeline> &meta_pipeline, S
 	// create an event and stack for all pipelines in the MetaPipeline
 	vector<shared_ptr<Pipeline>> pipelines;
 	meta_pipeline->GetPipelines(pipelines, false);
-	for (idx_t i = 1; i < pipelines.size(); i++) { // loop starts at 1 because 0 is the base pipeline
+	for (idx_t i = 1; i < pipelines.size(); i++) {  // loop starts at 1 because 0 is the base pipeline
 		auto &pipeline = pipelines[i];
 		D_ASSERT(pipeline);
 
@@ -227,14 +229,14 @@ void Executor::VerifyScheduledEvents(const ScheduleEventData &event_data) {
 
 void Executor::VerifyScheduledEventsInternal(const idx_t vertex, const vector<Event *> &vertices, vector<bool> &visited,
                                              vector<bool> &recursion_stack) {
-	D_ASSERT(!recursion_stack[vertex]); // this vertex is in the recursion stack: circular dependency!
+	D_ASSERT(!recursion_stack[vertex]);  // this vertex is in the recursion stack: circular dependency!
 	if (visited[vertex]) {
-		return; // early out: we already visited this vertex
+		return;  // early out: we already visited this vertex
 	}
 
 	auto &parents = vertices[vertex]->GetParentsVerification();
 	if (parents.empty()) {
-		return; // early out: outgoing edges
+		return;  // early out: outgoing edges
 	}
 
 	// create a vector the indices of the adjacent events
@@ -248,7 +250,7 @@ void Executor::VerifyScheduledEventsInternal(const idx_t vertex, const vector<Ev
 				break;
 			}
 		}
-		D_ASSERT(i != count); // dependency must be in there somewhere
+		D_ASSERT(i != count);  // dependency must be in there somewhere
 	}
 
 	// mark vertex as visited and add to recursion stack
@@ -327,7 +329,6 @@ void Executor::Initialize(PhysicalOperator &plan) {
 }
 
 void Executor::InitializeInternal(PhysicalOperator &plan) {
-
 	auto &scheduler = TaskScheduler::GetScheduler(context);
 	{
 		lock_guard<mutex> elock(executor_lock);
@@ -368,6 +369,23 @@ void Executor::InitializeInternal(PhysicalOperator &plan) {
 
 		// collect all pipelines from the root pipelines (recursively) for the progress bar and verify them
 		root_pipeline->GetPipelines(pipelines, true);
+
+		bool output = true;
+		for (auto &p : pipelines) {
+			auto sink = p->GetSink();
+			auto source = p->GetSource();
+			if (sink &&
+			    (sink->type == PhysicalOperatorType::TRANSACTION || sink->type == PhysicalOperatorType::CREATE_TABLE))
+				output = false;
+			if (source && (source->type == PhysicalOperatorType::TRANSACTION ||
+			               source->type == PhysicalOperatorType::CREATE_TABLE))
+				output = false;
+		}
+
+		if (output) {
+			for (auto &p : pipelines)
+				p->Print();
+		}
 
 		// finally, verify and schedule
 		VerifyPipelines();
@@ -502,11 +520,11 @@ PendingExecutionResult Executor::ExecuteTask() {
 	lock_guard<mutex> elock(executor_lock);
 	pipelines.clear();
 	NextExecutor();
-	if (HasError()) { // LCOV_EXCL_START
+	if (HasError()) {  // LCOV_EXCL_START
 		// an exception has occurred executing one of the pipelines
 		execution_result = PendingExecutionResult::EXECUTION_ERROR;
 		ThrowException();
-	} // LCOV_EXCL_STOP
+	}  // LCOV_EXCL_STOP
 	execution_result = PendingExecutionResult::RESULT_READY;
 	return execution_result;
 }
@@ -577,7 +595,7 @@ void Executor::Flush(ThreadContext &tcontext) {
 	profiler->Flush(tcontext.profiler);
 }
 
-bool Executor::GetPipelinesProgress(double &current_progress) { // LCOV_EXCL_START
+bool Executor::GetPipelinesProgress(double &current_progress) {  // LCOV_EXCL_START
 	lock_guard<mutex> elock(executor_lock);
 
 	vector<double> progress;
@@ -602,7 +620,7 @@ bool Executor::GetPipelinesProgress(double &current_progress) { // LCOV_EXCL_STA
 		current_progress += progress[i] * double(cardinality[i]) / double(total_cardinality);
 	}
 	return true;
-} // LCOV_EXCL_STOP
+}  // LCOV_EXCL_STOP
 
 bool Executor::HasResultCollector() {
 	return physical_plan->type == PhysicalOperatorType::RESULT_COLLECTOR;
@@ -635,4 +653,4 @@ unique_ptr<DataChunk> Executor::FetchChunk() {
 	return chunk;
 }
 
-} // namespace duckdb
+}  // namespace duckdb
