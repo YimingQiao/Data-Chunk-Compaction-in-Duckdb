@@ -30,7 +30,8 @@ void PhysicalJoin::BuildJoinPipelines(Pipeline &current, MetaPipeline &meta_pipe
 	op.op_state.reset();
 	op.sink_state.reset();
 
-	bool is_bushy = (op.children[1]->type != PhysicalOperatorType::TABLE_SCAN);
+	// bool is_bushy = (op.children[1]->type != PhysicalOperatorType::TABLE_SCAN);
+	bool is_bushy = false;
 	if (!is_bushy) {
 		// 'current' is the probe pipeline: add this operator
 		auto &state = meta_pipeline.GetState();

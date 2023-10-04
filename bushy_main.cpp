@@ -19,9 +19,9 @@ int main() {
 	}
 
 	// database setting
-	uint64_t stu_n = 5 * 1e7;
-	uint64_t major_n = 5 * 1e6;
-	uint64_t room_n = 5 * 1e6;
+	uint64_t stu_n = 5 * 1e4;
+	uint64_t major_n = 5 * 1e3;
+	uint64_t room_n = 5 * 1e3;
 
 	// random generator
 	std::mt19937 mt(42);
@@ -112,15 +112,16 @@ int main() {
 	//		    "EXPLAIN ANALYZE "
 	//		    "SELECT student.stu_id, department.name, room.type, type.info FROM student, department, room, type "
 	//		    "WHERE student.stu_id = room.stu_id AND student.major_id = department.major_id AND room.type =
-	//type.type;"; 		auto result = con.Query(seq_sql_join); 		if (!result->HasError()) { 			std::string plan =
-	//result->GetValue(1, 0).ToString(); 			std::cerr << plan << "\n"; 		} else { 			std::cerr << result->GetError() << "\n";
+	// type.type;"; 		auto result = con.Query(seq_sql_join); 		if (!result->HasError()) { 			std::string
+	// plan = result->GetValue(1, 0).ToString(); 			std::cerr << plan << "\n"; 		} else { std::cerr <<
+	// result->GetError() << "\n";
 	//		}
 	//	}
 
 	// BUSHY join query
 	{
 		std::string bushy_sql_join =
-		    // "EXPLAIN ANALYZE "
+		    "EXPLAIN ANALYZE "
 		    "SELECT t2.stu_id, t2.name, t1.type, t1.info "
 		    "FROM "
 		    "(SELECT room.stu_id, room.type, type.info FROM room, type WHERE room.type = type.type) AS t1, "
