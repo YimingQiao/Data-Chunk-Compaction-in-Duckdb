@@ -1140,3 +1140,11 @@ if(EXISTS ${CMAKE_CONFIG_TEMPLATE} AND EXISTS ${CMAKE_CONFIG_VERSION_TEMPLATE})
 endif()
 
 endif()
+
+# I use IMDB join order benchmark to test the performance of join order optimization
+add_executable(imdb_job imdb_main.cpp)
+target_link_libraries(imdb_job imdb duckdb)
+
+# Create a simple student-domoritory database to test the parallel execution of bushy plan.
+add_executable(bushy_plan bushy_main.cpp)
+target_link_libraries(bushy_plan duckdb)
