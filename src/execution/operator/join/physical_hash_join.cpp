@@ -265,7 +265,7 @@ public:
 		vector<shared_ptr<Task>> finalize_tasks;
 		auto &ht = *sink.hash_table;
 		const auto chunk_count = ht.GetDataCollection().ChunkCount();
-		const idx_t num_threads = TaskScheduler::GetScheduler(context).NumberOfThreadsForOperators();
+		const idx_t num_threads = TaskScheduler::GetScheduler(context).NumberOfThreads();
 		if (num_threads == 1 || (ht.Count() < PARALLEL_CONSTRUCT_THRESHOLD && !context.config.verify_parallelism)) {
 			// Single-threaded finalize
 			finalize_tasks.push_back(
@@ -701,7 +701,7 @@ void HashJoinGlobalSourceState::PrepareBuild(HashJoinGlobalSinkState &sink) {
 	build_chunk_count = data_collection.ChunkCount();
 	build_chunk_done = 0;
 
-	auto num_threads = TaskScheduler::GetScheduler(sink.context).NumberOfThreadsForOperators();
+	auto num_threads = TaskScheduler::GetScheduler(sink.context).NumberOfThreads();
 	build_chunks_per_thread = MaxValue<idx_t>((build_chunk_count + num_threads - 1) / num_threads, 1);
 
 	ht.InitializePointerTable();
@@ -732,7 +732,7 @@ void HashJoinGlobalSourceState::PrepareScanHT(HashJoinGlobalSinkState &sink) {
 	full_outer_chunk_count = data_collection.ChunkCount();
 	full_outer_chunk_done = 0;
 
-	auto num_threads = TaskScheduler::GetScheduler(sink.context).NumberOfThreadsForOperators();
+	auto num_threads = TaskScheduler::GetScheduler(sink.context).NumberOfThreads();
 	full_outer_chunks_per_thread = MaxValue<idx_t>((full_outer_chunk_count + num_threads - 1) / num_threads, 1);
 
 	global_stage = HashJoinSourceStage::SCAN_HT;

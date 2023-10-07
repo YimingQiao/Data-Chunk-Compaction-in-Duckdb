@@ -1,4 +1,8 @@
+#include "duckdb/catalog/catalog_entry/duck_table_entry.hpp"
+#include "duckdb/common/operator/subtract.hpp"
+#include "duckdb/execution/operator/helper/physical_pipeline_breaker.hpp"
 #include "duckdb/execution/operator/join/perfect_hash_join_executor.hpp"
+#include "duckdb/execution/operator/join/physical_blockwise_nl_join.hpp"
 #include "duckdb/execution/operator/join/physical_cross_product.hpp"
 #include "duckdb/execution/operator/join/physical_hash_join.hpp"
 #include "duckdb/execution/operator/join/physical_iejoin.hpp"
@@ -9,13 +13,10 @@
 #include "duckdb/execution/physical_plan_generator.hpp"
 #include "duckdb/function/table/table_scan.hpp"
 #include "duckdb/main/client_context.hpp"
-#include "duckdb/planner/operator/logical_comparison_join.hpp"
-#include "duckdb/transaction/duck_transaction.hpp"
-#include "duckdb/common/operator/subtract.hpp"
-#include "duckdb/execution/operator/join/physical_blockwise_nl_join.hpp"
 #include "duckdb/planner/expression/bound_reference_expression.hpp"
 #include "duckdb/planner/expression_iterator.hpp"
-#include "duckdb/catalog/catalog_entry/duck_table_entry.hpp"
+#include "duckdb/planner/operator/logical_comparison_join.hpp"
+#include "duckdb/transaction/duck_transaction.hpp"
 
 namespace duckdb {
 
@@ -37,17 +38,17 @@ static bool CanPlanIndexJoin(ClientContext &context, TableScanBindData &bind_dat
 bool ExtractNumericValue(Value val, int64_t &result) {
 	if (!val.type().IsIntegral()) {
 		switch (val.type().InternalType()) {
-		case PhysicalType::INT16:
-			result = val.GetValueUnsafe<int16_t>();
-			break;
-		case PhysicalType::INT32:
-			result = val.GetValueUnsafe<int32_t>();
-			break;
-		case PhysicalType::INT64:
-			result = val.GetValueUnsafe<int64_t>();
-			break;
-		default:
-			return false;
+			case PhysicalType::INT16:
+				result = val.GetValueUnsafe<int16_t>();
+				break;
+			case PhysicalType::INT32:
+				result = val.GetValueUnsafe<int32_t>();
+				break;
+			case PhysicalType::INT64:
+				result = val.GetValueUnsafe<int64_t>();
+				break;
+			default:
+				return false;
 		}
 	} else {
 		if (!val.DefaultTryCastAs(LogicalType::BIGINT)) {
@@ -73,11 +74,11 @@ void CheckForPerfectJoinOpt(LogicalComparisonJoin &op, PerfectHashJoinStats &joi
 	}
 	for (auto &type : op.children[1]->types) {
 		switch (type.InternalType()) {
-		case PhysicalType::STRUCT:
-		case PhysicalType::LIST:
-			return;
-		default:
-			break;
+			case PhysicalType::STRUCT:
+			case PhysicalType::LIST:
+				return;
+			default:
+				break;
 		}
 	}
 	// with equality condition and null values not equal
@@ -96,7 +97,7 @@ void CheckForPerfectJoinOpt(LogicalComparisonJoin &op, PerfectHashJoinStats &joi
 	}
 
 	// and when the build range is smaller than the threshold
-	auto &stats_build = *op.join_stats[0].get(); // lhs stats
+	auto &stats_build = *op.join_stats[0].get();  // lhs stats
 	if (!NumericStats::HasMinMax(stats_build)) {
 		return;
 	}
@@ -111,7 +112,7 @@ void CheckForPerfectJoinOpt(LogicalComparisonJoin &op, PerfectHashJoinStats &joi
 	}
 
 	// Fill join_stats for invisible join
-	auto &stats_probe = *op.join_stats[1].get(); // rhs stats
+	auto &stats_probe = *op.join_stats[1].get();  // rhs stats
 	if (!NumericStats::HasMinMax(stats_probe)) {
 		return;
 	}
@@ -263,35 +264,35 @@ unique_ptr<PhysicalOperator> PhysicalPlanGenerator::PlanComparisonJoin(LogicalCo
 	for (size_t c = 0; c < op.conditions.size(); ++c) {
 		auto &cond = op.conditions[c];
 		switch (cond.comparison) {
-		case ExpressionType::COMPARE_EQUAL:
-		case ExpressionType::COMPARE_NOT_DISTINCT_FROM:
-			has_equality = true;
-			break;
-		case ExpressionType::COMPARE_LESSTHAN:
-		case ExpressionType::COMPARE_GREATERTHAN:
-		case ExpressionType::COMPARE_LESSTHANOREQUALTO:
-		case ExpressionType::COMPARE_GREATERTHANOREQUALTO:
-			++has_range;
-			break;
-		case ExpressionType::COMPARE_NOTEQUAL:
-		case ExpressionType::COMPARE_DISTINCT_FROM:
-			break;
-		default:
-			throw NotImplementedException("Unimplemented comparison join");
+			case ExpressionType::COMPARE_EQUAL:
+			case ExpressionType::COMPARE_NOT_DISTINCT_FROM:
+				has_equality = true;
+				break;
+			case ExpressionType::COMPARE_LESSTHAN:
+			case ExpressionType::COMPARE_GREATERTHAN:
+			case ExpressionType::COMPARE_LESSTHANOREQUALTO:
+			case ExpressionType::COMPARE_GREATERTHANOREQUALTO:
+				++has_range;
+				break;
+			case ExpressionType::COMPARE_NOTEQUAL:
+			case ExpressionType::COMPARE_DISTINCT_FROM:
+				break;
+			default:
+				throw NotImplementedException("Unimplemented comparison join");
 		}
 	}
 
 	bool can_merge = has_range > 0;
 	bool can_iejoin = has_range >= 2 && recursive_cte_tables.empty();
 	switch (op.join_type) {
-	case JoinType::SEMI:
-	case JoinType::ANTI:
-	case JoinType::MARK:
-		can_merge = can_merge && op.conditions.size() == 1;
-		can_iejoin = false;
-		break;
-	default:
-		break;
+		case JoinType::SEMI:
+		case JoinType::ANTI:
+		case JoinType::MARK:
+			can_merge = can_merge && op.conditions.size() == 1;
+			can_iejoin = false;
+			break;
+		default:
+			break;
 	}
 
 	//	TODO: Extend PWMJ to handle all comparisons and projection maps
@@ -309,6 +310,11 @@ unique_ptr<PhysicalOperator> PhysicalPlanGenerator::PlanComparisonJoin(LogicalCo
 		plan = make_uniq<PhysicalHashJoin>(op, std::move(left), std::move(right), std::move(op.conditions),
 		                                   op.join_type, op.left_projection_map, op.right_projection_map,
 		                                   std::move(op.mark_types), op.estimated_cardinality, perfect_join_stats);
+
+		// add a pipeline breaker
+		auto types_copy = plan->types;
+		auto estimated_cardinality_copy = plan->estimated_cardinality;
+		plan = make_uniq<PhysicalPipelineBreaker>(std::move(plan), types_copy, estimated_cardinality_copy);
 
 	} else {
 		static constexpr const idx_t NESTED_LOOP_JOIN_THRESHOLD = 5;
@@ -343,15 +349,15 @@ unique_ptr<PhysicalOperator> PhysicalPlanGenerator::PlanComparisonJoin(LogicalCo
 
 unique_ptr<PhysicalOperator> PhysicalPlanGenerator::CreatePlan(LogicalComparisonJoin &op) {
 	switch (op.type) {
-	case LogicalOperatorType::LOGICAL_ASOF_JOIN:
-		return PlanAsOfJoin(op);
-	case LogicalOperatorType::LOGICAL_COMPARISON_JOIN:
-		return PlanComparisonJoin(op);
-	case LogicalOperatorType::LOGICAL_DELIM_JOIN:
-		return PlanDelimJoin(op);
-	default:
-		throw InternalException("Unrecognized operator type for LogicalComparisonJoin");
+		case LogicalOperatorType::LOGICAL_ASOF_JOIN:
+			return PlanAsOfJoin(op);
+		case LogicalOperatorType::LOGICAL_COMPARISON_JOIN:
+			return PlanComparisonJoin(op);
+		case LogicalOperatorType::LOGICAL_DELIM_JOIN:
+			return PlanDelimJoin(op);
+		default:
+			throw InternalException("Unrecognized operator type for LogicalComparisonJoin");
 	}
 }
 
-} // namespace duckdb
+}  // namespace duckdb

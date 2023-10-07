@@ -114,8 +114,7 @@ void Pipeline::ScheduleSequentialTask(shared_ptr<Event> &event) {
 
 bool Pipeline::ScheduleParallel(shared_ptr<Event> &event) {
 	// Prevent parallelization of single operator.
-	// And, if this setting will hurt the multi pipeline parallel.
-	return false;
+	//	return false;
 
 	// check if the sink, source and all intermediate operators support parallelism
 	if (!sink->ParallelSink()) {
@@ -182,7 +181,7 @@ void Pipeline::Schedule(shared_ptr<Event> &event) {
 bool Pipeline::LaunchScanTasks(shared_ptr<Event> &event, idx_t max_threads) {
 	// split the scan up into parts and schedule the parts
 	auto &scheduler = TaskScheduler::GetScheduler(executor.context);
-	idx_t active_threads = scheduler.NumberOfThreadsForOperators();
+	idx_t active_threads = scheduler.NumberOfThreads();
 	if (max_threads > active_threads) {
 		max_threads = active_threads;
 	}

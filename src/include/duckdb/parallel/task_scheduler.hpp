@@ -63,10 +63,6 @@ public:
 	void SetThreads(int32_t n);
 	//! Returns the number of threads
 	DUCKDB_API int32_t NumberOfThreads();
-	//! Returns the number of threads for operators
-	int32_t NumberOfThreadsForOperators() {
-		return 1;
-	}
 
 	//! Send signals to n threads, signalling for them to wake up and attempt to execute a task
 	void Signal(idx_t n);

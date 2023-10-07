@@ -18,7 +18,7 @@ unique_ptr<PhysicalOperator> DuckCatalog::PlanCreateTableAs(ClientContext &conte
                                                             unique_ptr<PhysicalOperator> plan) {
 	bool parallel_streaming_insert = !PhysicalPlanGenerator::PreserveInsertionOrder(context, *plan);
 	bool use_batch_index = PhysicalPlanGenerator::UseBatchIndex(context, *plan);
-	auto num_threads = TaskScheduler::GetScheduler(context).NumberOfThreadsForOperators();
+	auto num_threads = TaskScheduler::GetScheduler(context).NumberOfThreads();
 	unique_ptr<PhysicalOperator> create;
 	if (!parallel_streaming_insert && use_batch_index) {
 		create = make_uniq<PhysicalBatchInsert>(op, op.schema, std::move(op.info), op.estimated_cardinality);

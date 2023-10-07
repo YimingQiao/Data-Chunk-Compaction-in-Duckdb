@@ -19,9 +19,9 @@ int main() {
 	}
 
 	// database setting
-	uint64_t stu_n = 5 * 1e4;
-	uint64_t major_n = 5 * 1e3;
-	uint64_t room_n = 5 * 1e3;
+	uint64_t stu_n = 5 * 1e7;
+	uint64_t major_n = 5 * 1e6;
+	uint64_t room_n = 5 * 1e6;
 
 	// random generator
 	std::mt19937 mt(42);
@@ -106,17 +106,24 @@ int main() {
 	//		std::cout << "Type table inserted\n";
 	//	}
 
+	// set num of thread
+	{ con.Query("\"SET threads TO 16;\""); }
+
 	// SEQ join query
-	//	{
-	//		std::string seq_sql_join =
-	//		    "EXPLAIN ANALYZE "
-	//		    "SELECT student.stu_id, department.name, room.type, type.info FROM student, department, room, type "
-	//		    "WHERE student.stu_id = room.stu_id AND student.major_id = department.major_id AND room.type =
-	// type.type;"; 		auto result = con.Query(seq_sql_join); 		if (!result->HasError()) { 			std::string
-	// plan = result->GetValue(1, 0).ToString(); 			std::cerr << plan << "\n"; 		} else { std::cerr <<
-	// result->GetError() << "\n";
-	//		}
-	//	}
+	{
+		std::string seq_sql_join =
+		    "EXPLAIN ANALYZE "
+		    "SELECT student.stu_id, department.name, room.type, type.info FROM student, department, room, type "
+		    "WHERE student.stu_id = room.stu_id AND student.major_id = department.major_id "
+		    "AND room.type = type.type";
+		auto result = con.Query(seq_sql_join);
+		if (!result->HasError()) {
+			std::string plan = result->GetValue(1, 0).ToString();
+			std::cerr << plan << "\n";
+		} else {
+			std::cerr << result->GetError() << "\n";
+		}
+	}
 
 	// BUSHY join query
 	{
@@ -124,9 +131,10 @@ int main() {
 		    "EXPLAIN ANALYZE "
 		    "SELECT t2.stu_id, t2.name, t1.type, t1.info "
 		    "FROM "
-		    "(SELECT room.stu_id, room.type, type.info FROM room, type WHERE room.type = type.type) AS t1, "
-		    "(SELECT student.stu_id, department.name, FROM student, department WHERE student.major_id = "
-		    "department.major_id) AS t2, "
+		    "(SELECT room.stu_id, room.type, type.info "
+		    " FROM room INNER JOIN type ON room.type = type.type) AS t1,"
+		    "(SELECT student.stu_id, department.name "
+		    " FROM student, department WHERE student.major_id = department.major_id) AS t2,"
 		    "WHERE t1.stu_id = t2.stu_id;";
 		auto result = con.Query(bushy_sql_join);
 		if (!result->HasError()) {

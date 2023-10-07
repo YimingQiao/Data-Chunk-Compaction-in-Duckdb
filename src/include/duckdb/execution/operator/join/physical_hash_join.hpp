@@ -64,7 +64,7 @@ protected:
 	                                                 GlobalSourceState &gstate) const override;
 	SourceResultType GetData(ExecutionContext &context, DataChunk &chunk, OperatorSourceInput &input) const override;
 
-	//! Becomes a source when it is an external join, Bravo has 512G memory, I disable this for now
+	//! Becomes a source when it is an external join
 	bool IsSource() const override {
 		return true;
 	}
@@ -91,4 +91,4 @@ public:
 	}
 };
 
-} // namespace duckdb
+}  // namespace duckdb
