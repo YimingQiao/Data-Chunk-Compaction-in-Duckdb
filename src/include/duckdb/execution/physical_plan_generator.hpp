@@ -8,14 +8,15 @@
 
 #pragma once
 
+#include "duckdb/catalog/dependency_list.hpp"
 #include "duckdb/common/common.hpp"
+#include "duckdb/common/unordered_map.hpp"
+#include "duckdb/common/unordered_set.hpp"
 #include "duckdb/execution/physical_operator.hpp"
 #include "duckdb/planner/logical_operator.hpp"
 #include "duckdb/planner/logical_tokens.hpp"
 #include "duckdb/planner/operator/logical_limit_percent.hpp"
-#include "duckdb/catalog/dependency_list.hpp"
-#include "duckdb/common/unordered_map.hpp"
-#include "duckdb/common/unordered_set.hpp"
+#include "duckdb/planner/operator/logical_pipeline_breaker.hpp"
 
 namespace duckdb {
 class ClientContext;
@@ -90,6 +91,7 @@ protected:
 	unique_ptr<PhysicalOperator> CreatePlan(LogicalMaterializedCTE &op);
 	unique_ptr<PhysicalOperator> CreatePlan(LogicalCTERef &op);
 	unique_ptr<PhysicalOperator> CreatePlan(LogicalPivot &op);
+	unique_ptr<PhysicalOperator> CreatePlan(LogicalPipelineBreaker &op);
 
 	unique_ptr<PhysicalOperator> PlanAsOfJoin(LogicalComparisonJoin &op);
 	unique_ptr<PhysicalOperator> PlanComparisonJoin(LogicalComparisonJoin &op);
@@ -105,4 +107,4 @@ private:
 private:
 	ClientContext &context;
 };
-} // namespace duckdb
+}  // namespace duckdb

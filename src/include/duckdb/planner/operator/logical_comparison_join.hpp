@@ -65,4 +65,4 @@ public:
 	                                  vector<unique_ptr<Expression>> &arbitrary_expressions);
 };
 
-} // namespace duckdb
+}  // namespace duckdb

@@ -1,6 +1,5 @@
 #include "duckdb/catalog/catalog_entry/duck_table_entry.hpp"
 #include "duckdb/common/operator/subtract.hpp"
-#include "duckdb/execution/operator/helper/physical_pipeline_breaker.hpp"
 #include "duckdb/execution/operator/join/perfect_hash_join_executor.hpp"
 #include "duckdb/execution/operator/join/physical_blockwise_nl_join.hpp"
 #include "duckdb/execution/operator/join/physical_cross_product.hpp"
@@ -310,12 +309,6 @@ unique_ptr<PhysicalOperator> PhysicalPlanGenerator::PlanComparisonJoin(LogicalCo
 		plan = make_uniq<PhysicalHashJoin>(op, std::move(left), std::move(right), std::move(op.conditions),
 		                                   op.join_type, op.left_projection_map, op.right_projection_map,
 		                                   std::move(op.mark_types), op.estimated_cardinality, perfect_join_stats);
-
-		// add a pipeline breaker
-		auto types_copy = plan->types;
-		auto estimated_cardinality_copy = plan->estimated_cardinality;
-		plan = make_uniq<PhysicalPipelineBreaker>(std::move(plan), types_copy, estimated_cardinality_copy);
-
 	} else {
 		static constexpr const idx_t NESTED_LOOP_JOIN_THRESHOLD = 5;
 		if (left->estimated_cardinality <= NESTED_LOOP_JOIN_THRESHOLD ||

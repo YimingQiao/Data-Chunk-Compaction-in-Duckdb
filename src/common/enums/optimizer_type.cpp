@@ -1,7 +1,7 @@
 #include "duckdb/common/enums/optimizer_type.hpp"
-#include "duckdb/common/string_util.hpp"
 
 #include "duckdb/common/exception.hpp"
+#include "duckdb/common/string_util.hpp"
 
 namespace duckdb {
 
@@ -28,6 +28,7 @@ static DefaultOptimizerType internal_optimizer_types[] = {
     {"compressed_materialization", OptimizerType::COMPRESSED_MATERIALIZATION},
     {"duplicate_groups", OptimizerType::DUPLICATE_GROUPS},
     {"reorder_filter", OptimizerType::REORDER_FILTER},
+    {"join_order_bushy", OptimizerType::JOIN_ORDER_BUSHY},  // yiqiao
     {"extension", OptimizerType::EXTENSION},
     {nullptr, OptimizerType::INVALID}};
 
@@ -55,4 +56,4 @@ OptimizerType OptimizerTypeFromString(const string &str) {
 	                      StringUtil::CandidatesErrorMessage(optimizer_names, str, "Candidate optimizers"));
 }
 
-} // namespace duckdb
+}  // namespace duckdb

@@ -92,12 +92,6 @@ unique_ptr<LogicalOperator> Optimizer::Optimize(unique_ptr<LogicalOperator> plan
 
 	this->plan = std::move(plan_p);
 
-	// In this part, we perform the bushy join ordering optimization
-	//	RunOptimizer(OptimizerType::JOIN_ORDER_BUSHY, [&]() {
-	//		BushyOrderOptimizer optimizer(context);
-	//		plan = optimizer.Optimize(std::move(plan));
-	//	});
-
 	// first we perform expression rewrites using the ExpressionRewriter
 	// this does not change the logical plan structure, but only simplifies the expression trees
 	RunOptimizer(OptimizerType::EXPRESSION_REWRITER, [&]() { rewriter.VisitOperator(*plan); });
@@ -205,6 +199,12 @@ unique_ptr<LogicalOperator> Optimizer::Optimize(unique_ptr<LogicalOperator> plan
 		plan = expression_heuristics.Rewrite(std::move(plan));
 	});
 
+	// In this part, we perform the bushy join ordering optimization
+	RunOptimizer(OptimizerType::JOIN_ORDER_BUSHY, [&]() {
+		BushyOrderOptimizer bushy(context);
+		plan = bushy.Rewrite(std::move(plan));
+	});
+
 	for (auto &optimizer_extension : DBConfig::GetConfig(context).optimizer_extensions) {
 		RunOptimizer(OptimizerType::EXTENSION, [&]() {
 			optimizer_extension.optimize_function(context, optimizer_extension.optimizer_info.get(), plan);
@@ -213,10 +213,11 @@ unique_ptr<LogicalOperator> Optimizer::Optimize(unique_ptr<LogicalOperator> plan
 
 	Planner::VerifyPlan(context, plan);
 
-	// if this plan is Select, we print it
+	// if this plan is a Select, we print it
 	//	if (plan->type != LogicalOperatorType::LOGICAL_INSERT && plan->type != LogicalOperatorType::LOGICAL_CREATE_TABLE
-	//&& 	    plan->type != LogicalOperatorType::LOGICAL_UPDATE && plan->type != LogicalOperatorType::LOGICAL_DELETE)
-	//{ 		Printer::Print("Input Logical Plan: "); 		plan->Print();
+	//&& 	    plan->type != LogicalOperatorType::LOGICAL_UPDATE && plan->type != LogicalOperatorType::LOGICAL_DELETE) {
+	//		Printer::Print("Input Logical Plan: ");
+	//		plan->Print();
 	//	}
 
 	return std::move(plan);

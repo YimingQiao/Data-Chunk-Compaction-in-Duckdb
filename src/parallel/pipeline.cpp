@@ -113,9 +113,6 @@ void Pipeline::ScheduleSequentialTask(shared_ptr<Event> &event) {
 }
 
 bool Pipeline::ScheduleParallel(shared_ptr<Event> &event) {
-	// Prevent parallelization of single operator.
-	//	return false;
-
 	// check if the sink, source and all intermediate operators support parallelism
 	if (!sink->ParallelSink()) {
 		return false;
@@ -135,7 +132,20 @@ bool Pipeline::ScheduleParallel(shared_ptr<Event> &event) {
 			    "Attempting to schedule a pipeline where the sink requires batch index but source does not support it");
 		}
 	}
-	idx_t max_threads = source_state->MaxThreads();
+
+	// idx_t max_threads = source_state->MaxThreads();
+	idx_t max_threads;
+	if (source->GetName() == "SEQ_SCAN ") {
+		max_threads = 1;
+	} else {
+		max_threads = source_state->MaxThreads();
+	}
+
+	auto &scheduler = TaskScheduler::GetScheduler(executor.context);
+	idx_t active_threads = scheduler.NumberOfThreads();
+	std::cerr << "Pipeline from " + source->GetName() + " to " + sink->GetName() +
+	                 "\tmax_threads: " + std::to_string(max_threads) + "/" + std::to_string(active_threads) + "\n";
+
 	return LaunchScanTasks(event, max_threads);
 }
 

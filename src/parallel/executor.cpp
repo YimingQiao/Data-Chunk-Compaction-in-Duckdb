@@ -370,22 +370,21 @@ void Executor::InitializeInternal(PhysicalOperator &plan) {
 		// collect all pipelines from the root pipelines (recursively) for the progress bar and verify them
 		root_pipeline->GetPipelines(pipelines, true);
 
-		bool output = true;
-		for (auto &p : pipelines) {
-			auto sink = p->GetSink();
-			auto source = p->GetSource();
-			if (sink &&
-			    (sink->type == PhysicalOperatorType::TRANSACTION || sink->type == PhysicalOperatorType::CREATE_TABLE))
-				output = false;
-			if (source && (source->type == PhysicalOperatorType::TRANSACTION ||
-			               source->type == PhysicalOperatorType::CREATE_TABLE))
-				output = false;
-		}
-
-		if (output) {
-			for (auto &p : pipelines)
-				p->Print();
-		}
+		//		bool output = true;
+		//		for (auto &p : pipelines) {
+		//			auto sink = p->GetSink();
+		//			auto source = p->GetSource();
+		//			if (sink &&
+		//			    (sink->type == PhysicalOperatorType::TRANSACTION || sink->type ==
+		// PhysicalOperatorType::CREATE_TABLE)) 				output = false; 			if (source && (source->type
+		// == PhysicalOperatorType::TRANSACTION || 			               source->type ==
+		// PhysicalOperatorType::CREATE_TABLE)) 				output = false;
+		//		}
+		//
+		//		if (output) {
+		//			for (auto &p : pipelines)
+		//				p->Print();
+		//		}
 
 		// finally, verify and schedule
 		VerifyPipelines();

@@ -152,7 +152,7 @@ string PhysicalOperatorToString(PhysicalOperatorType type) {
 	case PhysicalOperatorType::PIVOT:
 		return "PIVOT";
 	case PhysicalOperatorType::PIPELINE_BREAKER:
-		return "Breaker";
+		return "BREAKER";
 	case PhysicalOperatorType::INVALID:
 		break;
 	}

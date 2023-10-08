@@ -30,58 +30,42 @@ void PhysicalJoin::BuildJoinPipelines(Pipeline &current, MetaPipeline &meta_pipe
 	op.op_state.reset();
 	op.sink_state.reset();
 
-	// bool is_bushy = (op.children[1]->type != PhysicalOperatorType::TABLE_SCAN);
-	bool is_bushy = false;
-	if (!is_bushy) {
-		// 'current' is the probe pipeline: add this operator
-		auto &state = meta_pipeline.GetState();
-		state.AddPipelineOperator(current, op);
+	// 'current' is the probe pipeline: add this operator
+	auto &state = meta_pipeline.GetState();
+	state.AddPipelineOperator(current, op);
 
-		// save the last added pipeline to set up dependencies later (in case we need to add a child pipeline)
-		vector<shared_ptr<Pipeline>> pipelines_so_far;
-		meta_pipeline.GetPipelines(pipelines_so_far, false);
-		auto last_pipeline = pipelines_so_far.back().get();
+	// save the last added pipeline to set up dependencies later (in case we need to add a child pipeline)
+	vector<shared_ptr<Pipeline>> pipelines_so_far;
+	meta_pipeline.GetPipelines(pipelines_so_far, false);
+	auto last_pipeline = pipelines_so_far.back().get();
 
-		// on the RHS (build side), we construct a child MetaPipeline with this operator as its sink
-		auto &child_meta_pipeline = meta_pipeline.CreateChildMetaPipeline(current, op);
-		child_meta_pipeline.Build(*op.children[1]);
+	// on the RHS (build side), we construct a child MetaPipeline with this operator as its sink
+	auto &child_meta_pipeline = meta_pipeline.CreateChildMetaPipeline(current, op);
+	child_meta_pipeline.Build(*op.children[1]);
 
-		// continue building the current pipeline on the LHS (probe side)
-		op.children[0]->BuildPipelines(current, meta_pipeline);
+	// continue building the current pipeline on the LHS (probe side)
+	op.children[0]->BuildPipelines(current, meta_pipeline);
 
-		switch (op.type) {
-			case PhysicalOperatorType::POSITIONAL_JOIN:
-				// Positional joins are always outer
-				meta_pipeline.CreateChildPipeline(current, op, last_pipeline);
-				return;
-			case PhysicalOperatorType::CROSS_PRODUCT:
-				return;
-			default:
-				break;
-		}
-
-		// Join can become a source operator if it's RIGHT/OUTER, or if the hash join goes out-of-core
-		bool add_child_pipeline = false;
-		auto &join_op = op.Cast<PhysicalJoin>();
-		if (join_op.IsSource()) {
-			add_child_pipeline = true;
-		}
-
-		if (add_child_pipeline) {
+	switch (op.type) {
+		case PhysicalOperatorType::POSITIONAL_JOIN:
+			// Positional joins are always outer
 			meta_pipeline.CreateChildPipeline(current, op, last_pipeline);
-		}
-	} else {
-		// current operator is the end of current
-		auto &state = meta_pipeline.GetState();
-		state.SetPipelineSource(current, op);
+			return;
+		case PhysicalOperatorType::CROSS_PRODUCT:
+			return;
+		default:
+			break;
+	}
 
-		// on the RHS (build side), we construct a child MetaPipeline with this operator as its sink
-		auto &child_meta_pipeline = meta_pipeline.CreateChildMetaPipeline(current, op);
-		child_meta_pipeline.Build(*op.children[1]);
+	// Join can become a source operator if it's RIGHT/OUTER, or if the hash join goes out-of-core
+	bool add_child_pipeline = false;
+	auto &join_op = op.Cast<PhysicalJoin>();
+	if (join_op.IsSource()) {
+		add_child_pipeline = true;
+	}
 
-		// on the LHS (probe side), we construct a child MetaPipeline with this operator as its sink
-		auto &child_meta_pipeline2 = meta_pipeline.CreateChildMetaPipeline(current, op);
-		child_meta_pipeline2.Build(*op.children[0]);
+	if (add_child_pipeline) {
+		meta_pipeline.CreateChildPipeline(current, op, last_pipeline);
 	}
 }
 

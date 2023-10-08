@@ -9,22 +9,22 @@ int main() {
 	duckdb::DuckDB db(db_name);
 	duckdb::Connection con(db);
 
-	std::vector<std::string> sql_create = {"CREATE TABLE student (stu_id INTEGER, major_id INTEGER);",
-	                                       "CREATE TABLE department(major_id INTEGER, name VARCHAR);"
-	                                       "CREATE TABLE room (room_id INTEGER, stu_id INTEGER, type INTEGER);"
-	                                       "CREATE TABLE type (type INTEGER, info VARCHAR);"};
-
-	for (const auto &sql : sql_create) {
-		con.Query(sql);
-	}
-
-	// database setting
-	uint64_t stu_n = 5 * 1e7;
-	uint64_t major_n = 5 * 1e6;
-	uint64_t room_n = 5 * 1e6;
-
-	// random generator
-	std::mt19937 mt(42);
+	//	std::vector<std::string> sql_create = {"CREATE TABLE student (stu_id INTEGER, major_id INTEGER);",
+	//	                                       "CREATE TABLE department(major_id INTEGER, name VARCHAR);"
+	//	                                       "CREATE TABLE room (room_id INTEGER, stu_id INTEGER, type INTEGER);"
+	//	                                       "CREATE TABLE type (type INTEGER, info VARCHAR);"};
+	//
+	//	for (const auto &sql : sql_create) {
+	//		con.Query(sql);
+	//	}
+	//
+	//	// database setting
+	//	uint64_t stu_n = 5 * 1e7;
+	//	uint64_t major_n = 5 * 1e6;
+	//	uint64_t room_n = 5 * 1e6;
+	//
+	//	// random generator
+	//	std::mt19937 mt(42);
 
 	//	// drop previous data
 	//	con.Query("DELETE FROM student; DELETE FROM department; DELETE FROM room; DELETE FROM type;");
@@ -107,7 +107,7 @@ int main() {
 	//	}
 
 	// set num of thread
-	{ con.Query("\"SET threads TO 16;\""); }
+	{ con.Query("SET threads TO 2;"); }
 
 	// SEQ join query
 	{
@@ -115,7 +115,7 @@ int main() {
 		    "EXPLAIN ANALYZE "
 		    "SELECT student.stu_id, department.name, room.type, type.info FROM student, department, room, type "
 		    "WHERE student.stu_id = room.stu_id AND student.major_id = department.major_id "
-		    "AND room.type = type.type";
+		    "AND room.type = type.type;";
 		auto result = con.Query(seq_sql_join);
 		if (!result->HasError()) {
 			std::string plan = result->GetValue(1, 0).ToString();

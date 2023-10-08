@@ -14,14 +14,17 @@ namespace duckdb {
 
 class BushyOrderOptimizer {
 public:
-	explicit BushyOrderOptimizer(ClientContext &context) : context(context) {
+	explicit BushyOrderOptimizer(ClientContext &context) : context(context), can_break(false) {
 	}
 
-	//! Perform join reordering inside a plan
-	unique_ptr<LogicalOperator> Optimize(unique_ptr<LogicalOperator> plan);
+	//! Perform pipeline breaker
+	unique_ptr<LogicalOperator> Rewrite(unique_ptr<LogicalOperator> op);
 
+protected:
 private:
 	ClientContext &context;
+
+	bool can_break = false;
 };
 
 }  // namespace duckdb
