@@ -1,6 +1,7 @@
 #include "duckdb/execution/operator/helper/physical_pipeline_breaker.hpp"
 
 namespace duckdb {
+
 //===--------------------------------------------------------------------===//
 // Sink
 //===--------------------------------------------------------------------===//
@@ -9,11 +10,18 @@ public:
 	mutex glock;
 	vector<unique_ptr<DataChunk>> chunks;
 	shared_ptr<ClientContext> context;
+
+	DataChunk gchunk;
 };
 
 class PipelineBreakerLocalSinkState : public LocalSinkState {
 public:
 	vector<unique_ptr<DataChunk>> chunks;
+
+	idx_t sink_times = 0;
+	idx_t sink_time_us = 0;
+
+	DataChunk lchunk;
 };
 
 duckdb::SinkResultType duckdb::PhysicalPipelineBreaker::Sink(duckdb::ExecutionContext &context,
@@ -21,10 +29,18 @@ duckdb::SinkResultType duckdb::PhysicalPipelineBreaker::Sink(duckdb::ExecutionCo
                                                              duckdb::OperatorSinkInput &input) const {
 	auto &lstate = input.local_state.Cast<PipelineBreakerLocalSinkState>();
 
+	auto start_time = std::chrono::high_resolution_clock::now();
+
 	lstate.chunks.push_back(make_uniq<DataChunk>());
 	auto &stored_chunk = lstate.chunks.back();
 	stored_chunk->Move(chunk);
 	chunk.Initialize(Allocator::DefaultAllocator(), stored_chunk->GetTypes());
+
+	auto end_time = std::chrono::high_resolution_clock::now();
+	auto duration = std::chrono::duration_cast<std::chrono::microseconds>(end_time - start_time);
+	lstate.sink_time_us += duration.count();
+	lstate.sink_times++;
+
 	return SinkResultType::NEED_MORE_INPUT;
 }
 
@@ -38,7 +54,17 @@ SinkCombineResultType PhysicalPipelineBreaker::Combine(ExecutionContext &context
 	}
 
 	lock_guard<mutex> l(gstate.glock);
-	std::move(std::begin(lstate.chunks), std::end(lstate.chunks), std::back_inserter(gstate.chunks));
+	gstate.chunks.reserve(gstate.chunks.size() + lstate.chunks.size());
+	gstate.chunks.insert(gstate.chunks.end(), std::make_move_iterator(lstate.chunks.begin()),
+	                     std::make_move_iterator(lstate.chunks.end()));
+
+	auto now = std::chrono::system_clock::now();
+	auto duration = now.time_since_epoch();
+	auto milliseconds = std::chrono::duration_cast<std::chrono::milliseconds>(duration).count();
+	auto avg_sink_time = lstate.sink_time_us / lstate.sink_times;
+
+	std::cerr << "[Breaker Sink Combine] time: " + std::to_string(milliseconds) +
+	                 "\tAverage Chunk Initialization Time: " + std::to_string(avg_sink_time) + " us\n";
 
 	return SinkCombineResultType::FINISHED;
 }
@@ -46,11 +72,13 @@ SinkCombineResultType PhysicalPipelineBreaker::Combine(ExecutionContext &context
 unique_ptr<GlobalSinkState> PhysicalPipelineBreaker::GetGlobalSinkState(ClientContext &context) const {
 	auto state = make_uniq<PipelineBreakerGlobalSinkState>();
 	state->context = context.shared_from_this();
+	state->gchunk.Initialize(Allocator::DefaultAllocator(), types);
 	return std::move(state);
 }
 
 unique_ptr<LocalSinkState> PhysicalPipelineBreaker::GetLocalSinkState(ExecutionContext &context) const {
 	auto state = make_uniq<PipelineBreakerLocalSinkState>();
+	state->lchunk.Initialize(Allocator::DefaultAllocator(), types);
 	return std::move(state);
 }
 

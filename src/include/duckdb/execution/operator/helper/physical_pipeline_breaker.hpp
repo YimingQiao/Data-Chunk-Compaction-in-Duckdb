@@ -8,9 +8,49 @@
 
 #pragma once
 
+#include <iostream>
+
 #include "duckdb/execution/physical_operator.hpp"
 
 namespace duckdb {
+
+// [It is not a good idea.] A DataChunk pool to store the intermediate results of the pipeline breaker
+class ChunkPool {
+public:
+	// The size of the pool, sizeof(tuple) is about 40 bytes, one chunk has 2048 tuples, so 40 * 2048 * 2**16 = 5GB
+	static constexpr const idx_t POOL_SIZE = 1 << 16;
+	static constexpr const idx_t NUM_THREADS = 6;
+	static constexpr const idx_t NUM_CHUNKS_PER_THREAD = POOL_SIZE / NUM_THREADS;
+
+public:
+	explicit ChunkPool(vector<LogicalType> types) : types(types), thread_idx(0), chunk_pools(POOL_SIZE) {
+		chunk_pools.resize(NUM_THREADS);
+		for (idx_t i = 0; i < NUM_THREADS; i++) {
+			auto &chunks = chunk_pools[i];
+			chunks.resize(NUM_CHUNKS_PER_THREAD);
+			for (idx_t j = 0; j < NUM_CHUNKS_PER_THREAD; j++) {
+				chunks[j] = make_uniq<DataChunk>();
+				chunks[j]->Initialize(Allocator::DefaultAllocator(), types);
+			}
+		}
+	}
+
+	vector<unique_ptr<DataChunk>> *Chunks() {
+		idx_t idx = thread_idx.fetch_add(1);
+		if (idx >= NUM_THREADS) {
+			std::cerr << "[ChunkPool] ChunkPool is Empty!\n";
+			return nullptr;
+		}
+
+		return &chunk_pools[idx];
+	}
+
+private:
+	vector<LogicalType> types;
+
+	std::atomic<idx_t> thread_idx;
+	vector<vector<unique_ptr<DataChunk>>> chunk_pools;
+};
 
 //! PhysicalPipelineBreaker represents a physical operator that is used to break up pipelines
 class PhysicalPipelineBreaker : public PhysicalOperator {

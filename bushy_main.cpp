@@ -25,7 +25,7 @@ int main() {
 	//
 	//	// random generator
 	//	std::mt19937 mt(42);
-
+	//
 	//	// drop previous data
 	//	con.Query("DELETE FROM student; DELETE FROM department; DELETE FROM room; DELETE FROM type;");
 	//
@@ -52,7 +52,7 @@ int main() {
 	//	{
 	//		std::string sql_insert = "INSERT INTO department VALUES ";
 	//		for (uint64_t i = 0; i < major_n; i++) {
-	//			sql_insert += "(" + std::to_string(i) + ", '" + "Major: " + std::to_string(i) + "')";
+	//			sql_insert += "(" + std::to_string(i) + ", '" + "major_" + std::to_string(i) + "')";
 	//			if (i != major_n - 1) sql_insert += ", ";
 	//
 	//			if (i % (5 * major_n / 100) == 0) {
@@ -91,7 +91,7 @@ int main() {
 	//	{
 	//		std::string sql_insert = "INSERT INTO type VALUES ";
 	//		for (uint64_t i = 0; i < room_n; i++) {
-	//			sql_insert += "(" + std::to_string(i) + ", '" + "Room type: " + std::to_string(i) + "')";
+	//			sql_insert += "(" + std::to_string(i) + ", '" + "room_type_" + std::to_string(i) + "')";
 	//			if (i != room_n - 1) sql_insert += ", ";
 	//
 	//			if (i % (5 * room_n / 100) == 0) {
@@ -106,8 +106,8 @@ int main() {
 	//		std::cout << "Type table inserted\n";
 	//	}
 
-	// set num of thread
-	{ con.Query("SET threads TO 2;"); }
+	// set num of thread, we cannot use 128 threads because 2 threads are left for Perf.
+	{ con.Query("SET threads TO 12;"); }
 
 	// SEQ join query
 	{
@@ -120,6 +120,7 @@ int main() {
 		if (!result->HasError()) {
 			std::string plan = result->GetValue(1, 0).ToString();
 			std::cerr << plan << "\n";
+			// std::cerr << result->ToString() << "\n";
 		} else {
 			std::cerr << result->GetError() << "\n";
 		}
@@ -140,6 +141,7 @@ int main() {
 		if (!result->HasError()) {
 			std::string plan = result->GetValue(1, 0).ToString();
 			std::cerr << plan << "\n";
+			// std::cerr << result->ToString() << "\n";
 		} else {
 			std::cerr << result->GetError() << "\n";
 		}
