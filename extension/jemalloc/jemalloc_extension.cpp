@@ -1,17 +1,28 @@
-#define DUCKDB_EXTENSION_MAIN
-#include "jemalloc_extension.hpp"
+#include <iostream>
 
+#define DUCKDB_EXTENSION_MAIN
 #include "duckdb/common/allocator.hpp"
 #include "jemalloc/jemalloc.h"
+#include "jemalloc_extension.hpp"
 
 #ifndef DUCKDB_NO_THREADS
 #include "duckdb/common/thread.hpp"
 #endif
 
 namespace duckdb {
+namespace {
+void custom_write_cb(void *cbopaque, const char *s) {
+	std::cerr << s << "\n";
+}
+}  // namespace
+
+void JemallocExtension::Print() {
+	duckdb_jemalloc::je_malloc_stats_print(custom_write_cb, NULL, NULL);
+}
 
 void JemallocExtension::Load(DuckDB &db) {
 	// NOP: This extension can only be loaded statically
+	// duckdb_jemalloc::je_mallctl()
 }
 
 std::string JemallocExtension::Name() {
@@ -71,7 +82,7 @@ void JemallocExtension::ThreadFlush(idx_t threshold) {
 	SetJemallocCTL("thread.peak.reset");
 }
 
-} // namespace duckdb
+}  // namespace duckdb
 
 extern "C" {
 

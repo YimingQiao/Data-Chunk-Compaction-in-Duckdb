@@ -81,6 +81,9 @@ public:
 	//! Set the DataChunk to own the data of data chunk, destroying the other chunk in the process
 	DUCKDB_API void Move(DataChunk &chunk);
 
+	//! yiqiao: Swap the data of two data chunks
+	DUCKDB_API void Swap(DataChunk &chunk);
+
 	//! Initializes the DataChunk with the specified types to an empty DataChunk
 	//! This will create one vector of the specified type for each LogicalType in the
 	//! types list. The vector will be referencing vector to the data owned by

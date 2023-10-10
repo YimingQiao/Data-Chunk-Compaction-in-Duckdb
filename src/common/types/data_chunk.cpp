@@ -120,6 +120,13 @@ void DataChunk::Move(DataChunk &chunk) {
 	chunk.Destroy();
 }
 
+void DataChunk::Swap(duckdb::DataChunk &chunk) {
+	std::swap(data, chunk.data);
+	std::swap(vector_caches, chunk.vector_caches);
+	std::swap(capacity, chunk.capacity);
+	std::swap(count, chunk.count);
+}
+
 void DataChunk::Copy(DataChunk &other, idx_t offset) const {
 	D_ASSERT(ColumnCount() == other.ColumnCount());
 	D_ASSERT(other.size() == 0);
