@@ -107,7 +107,7 @@ int main() {
 	//	}
 
 	// set num of thread, we cannot use 128 threads because 2 threads are left for Perf.
-	{ con.Query("SET threads TO 32;"); }
+	{ con.Query("SET threads TO 64;"); }
 
 	// SEQ join query
 	//	{

@@ -10,7 +10,7 @@ unique_ptr<PhysicalOperator> PhysicalPlanGenerator::CreatePlan(LogicalPipelineBr
 	unique_ptr<PhysicalOperator> plan = CreatePlan(*op.children[0]);
 	auto types = plan->types;
 	auto estimated_cardinality = op.estimated_cardinality;
-	auto breaker = make_uniq<PhysicalPipelineBreaker>(std::move(plan), types, estimated_cardinality);
+	auto breaker = make_uniq<PhysicalPipelineBreaker>(types, std::move(plan), estimated_cardinality);
 	plan = std::move(breaker);
 	return plan;
 }

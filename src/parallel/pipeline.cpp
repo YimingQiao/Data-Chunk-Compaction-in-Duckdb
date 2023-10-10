@@ -135,33 +135,31 @@ bool Pipeline::ScheduleParallel(shared_ptr<Event> &event) {
 
 	// idx_t max_threads = source_state->MaxThreads();
 	idx_t max_threads = 1;
-	idx_t kMultiThread = 4;
+	idx_t kMultiThread = 8;
 
-	max_threads = 4;
-
-	//	if (sink->GetName() == "BREAKER" ) {
+	//	if (sink->GetName() == "BREAKER") {
 	//		max_threads = kMultiThread;
 	//	}
 
-	//	if (source->GetName() == "SEQ_SCAN " && sink->GetName() == "HASH_JOIN" && operators.empty()) {
-	//		max_threads = kMultiThread;
-	//	}
-	//
-	//	if (source->GetName() == "BREAKER") {
-	//		max_threads = kMultiThread;
-	//	}
-	//
-	//	if (source->GetName() == "SEQ_SCAN " && sink->GetName() != "HASH_JOIN") {
-	//		max_threads = kMultiThread;
-	//	}
-	//
-	//	if (source->GetName() == "SEQ_SCAN " && sink->GetName() == "BREAKER") {
-	//		max_threads = kMultiThread;
-	//	}
-	//
-	//	if (source->GetName() == "SEQ_SCAN " && sink->GetName() == "HASH_JOIN" && !operators.empty()) {
-	//		max_threads = kMultiThread;
-	//	}
+	if (source->GetName() == "SEQ_SCAN " && sink->GetName() == "HASH_JOIN" && operators.empty()) {
+		max_threads = kMultiThread;
+	}
+
+	if (source->GetName() == "BREAKER") {
+		max_threads = kMultiThread;
+	}
+
+	if (source->GetName() == "SEQ_SCAN " && sink->GetName() != "HASH_JOIN") {
+		max_threads = kMultiThread;
+	}
+
+	if (source->GetName() == "SEQ_SCAN " && sink->GetName() == "BREAKER") {
+		max_threads = kMultiThread;
+	}
+
+	if (source->GetName() == "SEQ_SCAN " && sink->GetName() == "HASH_JOIN" && !operators.empty()) {
+		max_threads = kMultiThread;
+	}
 
 	size_t active_threads = TaskScheduler::GetScheduler(executor.context).NumberOfThreads();
 	auto now = std::chrono::system_clock::now();

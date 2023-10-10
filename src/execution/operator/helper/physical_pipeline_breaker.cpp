@@ -4,67 +4,74 @@
 
 namespace duckdb {
 
+PhysicalPipelineBreaker::PhysicalPipelineBreaker(vector<LogicalType> types, unique_ptr<PhysicalOperator> join,
+                                                 idx_t estimated_cardinality)
+    : PhysicalOperator(PhysicalOperatorType::PIPELINE_BREAKER, std::move(types), estimated_cardinality) {
+	children.push_back(std::move(join));
+}
+
+PhysicalPipelineBreaker::~PhysicalPipelineBreaker() {
+}
+
 //===--------------------------------------------------------------------===//
 // Sink
 //===--------------------------------------------------------------------===//
-class PipelineBreakerGlobalSinkState : public GlobalSinkState {
+class PipelineBreakerGlobalState : public GlobalSinkState {
 public:
-	mutex glock;
-	vector<unique_ptr<DataChunk>> chunks;
-	shared_ptr<ClientContext> context;
-
-	DataChunk gchunk;
+	std::mutex glock;
+	unique_ptr<ColumnDataCollection> intermediate_table;
+	ColumnDataScanState scan_state;
+	bool initialized = false;
 };
 
-class PipelineBreakerLocalSinkState : public LocalSinkState {
+class PipelineBreakerLocalState : public LocalSinkState {
 public:
-	vector<unique_ptr<DataChunk>> chunks;
+	explicit PipelineBreakerLocalState(vector<LogicalType> types) {
+		intermediate_table = make_uniq<ColumnDataCollection>(Allocator::DefaultAllocator(), types);
+		intermediate_table->InitializeAppend(append_state);
+	}
 
-	idx_t sink_times = 0;
-	idx_t sink_time_us = 0;
-
-	DataChunk lchunk;
+	unique_ptr<ColumnDataCollection> intermediate_table;
+	ColumnDataAppendState append_state;
+	//	idx_t sink_times = 0;
+	//	int64_t sink_time_us = 0;
 };
 
 duckdb::SinkResultType duckdb::PhysicalPipelineBreaker::Sink(duckdb::ExecutionContext &context,
                                                              duckdb::DataChunk &chunk,
                                                              duckdb::OperatorSinkInput &input) const {
-	auto &lstate = input.local_state.Cast<PipelineBreakerLocalSinkState>();
+	auto &lstate = input.local_state.Cast<PipelineBreakerLocalState>();
 
-	lstate.chunks.push_back(make_uniq<DataChunk>());
-	auto &stored_chunk = lstate.chunks.back();
-	stored_chunk->Move(chunk);
-
-	auto start_time = std::chrono::high_resolution_clock::now();
-	chunk.Initialize(Allocator::DefaultAllocator(), stored_chunk->GetTypes());
-	auto end_time = std::chrono::high_resolution_clock::now();
-
-	auto duration = std::chrono::duration_cast<std::chrono::microseconds>(end_time - start_time);
-	lstate.sink_time_us += duration.count();
-	lstate.sink_times++;
+	// auto start_time = std::chrono::high_resolution_clock::now();
+	{ lstate.intermediate_table->Append(chunk); }
+	//	auto end_time = std::chrono::high_resolution_clock::now();
+	//	auto duration = std::chrono::duration_cast<std::chrono::microseconds>(end_time - start_time);
+	//	lstate.sink_time_us += duration.count();
+	//	lstate.sink_times++;
 
 	return SinkResultType::NEED_MORE_INPUT;
 }
 
 SinkCombineResultType PhysicalPipelineBreaker::Combine(ExecutionContext &context,
                                                        OperatorSinkCombineInput &input) const {
-	auto &gstate = input.global_state.Cast<PipelineBreakerGlobalSinkState>();
-	auto &lstate = input.local_state.Cast<PipelineBreakerLocalSinkState>();
+	auto &gstate = input.global_state.Cast<PipelineBreakerGlobalState>();
+	auto &lstate = input.local_state.Cast<PipelineBreakerLocalState>();
 
-	if (lstate.chunks.empty()) {
+	if (lstate.intermediate_table->Count() == 0) {
 		return SinkCombineResultType::FINISHED;
 	}
 
 	lock_guard<mutex> l(gstate.glock);
-	gstate.chunks.reserve(gstate.chunks.size() + lstate.chunks.size());
-	gstate.chunks.insert(gstate.chunks.end(), std::make_move_iterator(lstate.chunks.begin()),
-	                     std::make_move_iterator(lstate.chunks.end()));
+	if (!gstate.intermediate_table) {
+		gstate.intermediate_table = std::move(lstate.intermediate_table);
+	} else {
+		gstate.intermediate_table->Combine(*lstate.intermediate_table);
+	}
 
-	auto now = std::chrono::system_clock::now();
-	auto duration = now.time_since_epoch();
-	auto milliseconds = std::chrono::duration_cast<std::chrono::milliseconds>(duration).count();
-	auto avg_sink_time = lstate.sink_time_us / lstate.sink_times;
-
+	//	auto now = std::chrono::system_clock::now();
+	//	auto duration = now.time_since_epoch();
+	//	auto milliseconds = std::chrono::duration_cast<std::chrono::milliseconds>(duration).count();
+	//	auto avg_sink_time = lstate.sink_time_us / lstate.sink_times;
 	//	std::cerr << "[Breaker Sink Combine] time: " + std::to_string(milliseconds) +
 	//	                 "\tAverage Chunk Initialization Time: " + std::to_string(avg_sink_time) + " us\n";
 
@@ -79,62 +86,27 @@ SinkFinalizeType PhysicalPipelineBreaker::Finalize(duckdb::Pipeline &pipeline, d
 }
 
 unique_ptr<GlobalSinkState> PhysicalPipelineBreaker::GetGlobalSinkState(ClientContext &context) const {
-	auto state = make_uniq<PipelineBreakerGlobalSinkState>();
-	state->context = context.shared_from_this();
-	state->gchunk.Initialize(Allocator::DefaultAllocator(), types);
-	return std::move(state);
+	return make_uniq<PipelineBreakerGlobalState>();
 }
 
 unique_ptr<LocalSinkState> PhysicalPipelineBreaker::GetLocalSinkState(ExecutionContext &context) const {
-	auto state = make_uniq<PipelineBreakerLocalSinkState>();
-	state->lchunk.Initialize(Allocator::DefaultAllocator(), types);
-	return std::move(state);
+	return make_uniq<PipelineBreakerLocalState>(types);
 }
 
 //===--------------------------------------------------------------------===//
 // Source
 //===--------------------------------------------------------------------===//
-class PipelineBreakerGlobalSourceState : public GlobalSourceState {
-public:
-	explicit PipelineBreakerGlobalSourceState(const PhysicalPipelineBreaker &op) : chunk_idx(0), max_threads(0) {
-		auto &sink = op.sink_state->Cast<PipelineBreakerGlobalSinkState>();
-		// max_threads = sink.chunks.size() / 512;
-		max_threads = 1;
-	}
-
-	std::atomic<size_t> chunk_idx;
-	idx_t max_threads;
-
-	idx_t MaxThreads() override {
-		return max_threads;
-	}
-};
-
-class PipelineBreakerLocalSourceState : public LocalSourceState {
-public:
-};
-
 SourceResultType PhysicalPipelineBreaker::GetData(ExecutionContext &context, DataChunk &chunk,
                                                   OperatorSourceInput &input) const {
-	auto &gstate = input.global_state.Cast<PipelineBreakerGlobalSourceState>();
-	auto &sink = sink_state->Cast<PipelineBreakerGlobalSinkState>();
+	auto &sink = sink_state->Cast<PipelineBreakerGlobalState>();
 
-	size_t idx = gstate.chunk_idx.fetch_add(1);
-	if (idx >= sink.chunks.size()) {
-		return SourceResultType::FINISHED;
+	if (!sink.initialized) {
+		sink.intermediate_table->InitializeScan(sink.scan_state);
+		sink.initialized = true;
 	}
 
-	chunk.Move(*sink.chunks[idx]);
+	std::lock_guard<std::mutex> lock(sink.glock);
+	sink.intermediate_table->Scan(sink.scan_state, chunk);
 	return chunk.size() == 0 ? SourceResultType::FINISHED : SourceResultType::HAVE_MORE_OUTPUT;
 }
-
-unique_ptr<GlobalSourceState> PhysicalPipelineBreaker::GetGlobalSourceState(ClientContext &context) const {
-	return make_uniq<PipelineBreakerGlobalSourceState>(*this);
-}
-
-unique_ptr<LocalSourceState> PhysicalPipelineBreaker::GetLocalSourceState(ExecutionContext &context,
-                                                                          GlobalSourceState &gstate) const {
-	return make_uniq<PipelineBreakerLocalSourceState>();
-}
-
 }  // namespace duckdb
