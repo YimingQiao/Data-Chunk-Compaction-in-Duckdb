@@ -107,24 +107,24 @@ int main() {
 	//	}
 
 	// set num of thread, we cannot use 128 threads because 2 threads are left for Perf.
-	{ con.Query("SET threads TO 12;"); }
+	{ con.Query("SET threads TO 16;"); }
 
 	// SEQ join query
-	{
-		std::string seq_sql_join =
-		    "EXPLAIN ANALYZE "
-		    "SELECT student.stu_id, department.name, room.type, type.info FROM student, department, room, type "
-		    "WHERE student.stu_id = room.stu_id AND student.major_id = department.major_id "
-		    "AND room.type = type.type;";
-		auto result = con.Query(seq_sql_join);
-		if (!result->HasError()) {
-			std::string plan = result->GetValue(1, 0).ToString();
-			std::cerr << plan << "\n";
-			// std::cerr << result->ToString() << "\n";
-		} else {
-			std::cerr << result->GetError() << "\n";
-		}
-	}
+	//	{
+	//		std::string seq_sql_join =
+	//		    "EXPLAIN ANALYZE "
+	//		    "SELECT student.stu_id, department.name, room.type, type.info FROM student, department, room, type "
+	//		    "WHERE student.stu_id = room.stu_id AND student.major_id = department.major_id "
+	//		    "AND room.type = type.type;";
+	//		auto result = con.Query(seq_sql_join);
+	//		if (!result->HasError()) {
+	//			std::string plan = result->GetValue(1, 0).ToString();
+	//			std::cerr << plan << "\n";
+	//			// std::cerr << result->ToString() << "\n";
+	//		} else {
+	//			std::cerr << result->GetError() << "\n";
+	//		}
+	//	}
 
 	// BUSHY join query
 	{
@@ -137,13 +137,15 @@ int main() {
 		    "(SELECT student.stu_id, department.name "
 		    " FROM student, department WHERE student.major_id = department.major_id) AS t2,"
 		    "WHERE t1.stu_id = t2.stu_id;";
-		auto result = con.Query(bushy_sql_join);
-		if (!result->HasError()) {
-			std::string plan = result->GetValue(1, 0).ToString();
-			std::cerr << plan << "\n";
-			// std::cerr << result->ToString() << "\n";
-		} else {
-			std::cerr << result->GetError() << "\n";
+		for (size_t i = 0; i < 3; ++i) {
+			auto result = con.Query(bushy_sql_join);
+			if (!result->HasError()) {
+				std::string plan = result->GetValue(1, 0).ToString();
+				std::cerr << plan << "\n";
+				// std::cerr << result->ToString() << "\n";
+			} else {
+				std::cerr << result->GetError() << "\n";
+			}
 		}
 	}
 

@@ -135,18 +135,18 @@ bool Pipeline::ScheduleParallel(shared_ptr<Event> &event) {
 
 	// idx_t max_threads = source_state->MaxThreads();
 	idx_t max_threads = 1;
-	idx_t kMultiThread = 12;
+	idx_t kMultiThread = 16;
 
 	if (source->GetName() == "SEQ_SCAN " && sink->GetName() == "HASH_JOIN" && operators.empty()) {
 		max_threads = 1;
 	}
 
 	if (source->GetName() == "BREAKER") {
-		max_threads = kMultiThread;
+		max_threads = kMultiThread / 2;
 	}
 
 	if (source->GetName() == "SEQ_SCAN " && sink->GetName() != "HASH_JOIN") {
-		max_threads = kMultiThread;
+		max_threads = kMultiThread / 2;
 	}
 
 	if (source->GetName() == "SEQ_SCAN " && sink->GetName() == "BREAKER") {
