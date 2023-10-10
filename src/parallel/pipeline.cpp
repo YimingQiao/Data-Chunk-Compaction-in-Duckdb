@@ -135,37 +135,41 @@ bool Pipeline::ScheduleParallel(shared_ptr<Event> &event) {
 
 	// idx_t max_threads = source_state->MaxThreads();
 	idx_t max_threads = 1;
-	idx_t kMultiThread = 16;
+	idx_t kMultiThread = 4;
 
-	if (source->GetName() == "SEQ_SCAN " && sink->GetName() == "HASH_JOIN" && operators.empty()) {
-		max_threads = 1;
-	}
+	max_threads = 4;
 
-	if (source->GetName() == "BREAKER") {
-		max_threads = kMultiThread / 2;
-	}
+	//	if (sink->GetName() == "BREAKER" ) {
+	//		max_threads = kMultiThread;
+	//	}
 
-	if (source->GetName() == "SEQ_SCAN " && sink->GetName() != "HASH_JOIN") {
-		max_threads = kMultiThread / 2;
-	}
+	//	if (source->GetName() == "SEQ_SCAN " && sink->GetName() == "HASH_JOIN" && operators.empty()) {
+	//		max_threads = kMultiThread;
+	//	}
+	//
+	//	if (source->GetName() == "BREAKER") {
+	//		max_threads = kMultiThread;
+	//	}
+	//
+	//	if (source->GetName() == "SEQ_SCAN " && sink->GetName() != "HASH_JOIN") {
+	//		max_threads = kMultiThread;
+	//	}
+	//
+	//	if (source->GetName() == "SEQ_SCAN " && sink->GetName() == "BREAKER") {
+	//		max_threads = kMultiThread;
+	//	}
+	//
+	//	if (source->GetName() == "SEQ_SCAN " && sink->GetName() == "HASH_JOIN" && !operators.empty()) {
+	//		max_threads = kMultiThread;
+	//	}
 
-	if (source->GetName() == "SEQ_SCAN " && sink->GetName() == "BREAKER") {
-		max_threads = kMultiThread / 2;
-	}
-
-	if (source->GetName() == "SEQ_SCAN " && sink->GetName() == "HASH_JOIN" && !operators.empty()) {
-		max_threads = kMultiThread / 2;
-	}
-
-	auto &scheduler = TaskScheduler::GetScheduler(executor.context);
-	idx_t active_threads = scheduler.NumberOfThreads();
+	size_t active_threads = TaskScheduler::GetScheduler(executor.context).NumberOfThreads();
 	auto now = std::chrono::system_clock::now();
 	auto duration = now.time_since_epoch();
-	auto milliseconds = std::chrono::duration_cast<std::chrono::milliseconds>(duration).count();
-
-	std::cerr << "Pipeline from " + source->GetName() + " to " + sink->GetName() +
-	                 "\tmax_threads: " + std::to_string(max_threads) + "/" + std::to_string(active_threads) +
-	                 "\ttime: " + std::to_string(milliseconds) + "ms\n";
+	auto milliseconds = std::chrono::duration_cast<std::chrono::milliseconds>(duration).count() % 1000000;
+	std::cerr << " [Open] " + source->GetName() + " --> " + sink->GetName() +
+	                 "\t #task/#thread: " + std::to_string(max_threads) + "/" + std::to_string(active_threads) +
+	                 "\tTick: " + std::to_string(milliseconds) + "ms\n";
 
 	return LaunchScanTasks(event, max_threads);
 }

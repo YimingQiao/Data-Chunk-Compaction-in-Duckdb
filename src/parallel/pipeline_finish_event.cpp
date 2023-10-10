@@ -20,6 +20,12 @@ public:
 
 public:
 	TaskExecutionResult ExecuteTask(TaskExecutionMode mode) override {
+		auto now = std::chrono::system_clock::now();
+		auto duration = now.time_since_epoch();
+		auto milliseconds = std::chrono::duration_cast<std::chrono::milliseconds>(duration).count() % 1000000;
+		std::cerr << "[Finish] " + pipeline.GetSource()->GetName() + " --> " + pipeline.GetSink()->GetName() +
+		                 "\tTick: " + std::to_string(milliseconds) + "ms\n";
+
 		auto sink = pipeline.GetSink();
 		InterruptState interrupt_state(shared_from_this());
 		OperatorSinkFinalizeInput finalize_input {*sink->sink_state, interrupt_state};
@@ -46,6 +52,7 @@ public:
 
 		sink->sink_state->state = sink_state;
 		event->FinishTask();
+
 		return TaskExecutionResult::TASK_FINISHED;
 	}
 

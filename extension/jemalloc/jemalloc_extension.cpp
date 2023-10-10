@@ -22,7 +22,6 @@ void JemallocExtension::Print() {
 
 void JemallocExtension::Load(DuckDB &db) {
 	// NOP: This extension can only be loaded statically
-	// duckdb_jemalloc::je_mallctl()
 }
 
 std::string JemallocExtension::Name() {

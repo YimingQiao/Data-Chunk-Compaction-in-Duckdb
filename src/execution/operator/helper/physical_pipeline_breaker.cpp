@@ -1,5 +1,7 @@
 #include "duckdb/execution/operator/helper/physical_pipeline_breaker.hpp"
 
+#include "../extension/jemalloc/include/jemalloc_extension.hpp"
+
 namespace duckdb {
 
 //===--------------------------------------------------------------------===//
@@ -29,14 +31,14 @@ duckdb::SinkResultType duckdb::PhysicalPipelineBreaker::Sink(duckdb::ExecutionCo
                                                              duckdb::OperatorSinkInput &input) const {
 	auto &lstate = input.local_state.Cast<PipelineBreakerLocalSinkState>();
 
-	auto start_time = std::chrono::high_resolution_clock::now();
-
 	lstate.chunks.push_back(make_uniq<DataChunk>());
 	auto &stored_chunk = lstate.chunks.back();
 	stored_chunk->Move(chunk);
-	chunk.Initialize(Allocator::DefaultAllocator(), stored_chunk->GetTypes());
 
+	auto start_time = std::chrono::high_resolution_clock::now();
+	chunk.Initialize(Allocator::DefaultAllocator(), stored_chunk->GetTypes());
 	auto end_time = std::chrono::high_resolution_clock::now();
+
 	auto duration = std::chrono::duration_cast<std::chrono::microseconds>(end_time - start_time);
 	lstate.sink_time_us += duration.count();
 	lstate.sink_times++;
@@ -63,10 +65,17 @@ SinkCombineResultType PhysicalPipelineBreaker::Combine(ExecutionContext &context
 	auto milliseconds = std::chrono::duration_cast<std::chrono::milliseconds>(duration).count();
 	auto avg_sink_time = lstate.sink_time_us / lstate.sink_times;
 
-	std::cerr << "[Breaker Sink Combine] time: " + std::to_string(milliseconds) +
-	                 "\tAverage Chunk Initialization Time: " + std::to_string(avg_sink_time) + " us\n";
+	//	std::cerr << "[Breaker Sink Combine] time: " + std::to_string(milliseconds) +
+	//	                 "\tAverage Chunk Initialization Time: " + std::to_string(avg_sink_time) + " us\n";
 
 	return SinkCombineResultType::FINISHED;
+}
+
+SinkFinalizeType PhysicalPipelineBreaker::Finalize(duckdb::Pipeline &pipeline, duckdb::Event &event,
+                                                   duckdb::ClientContext &context,
+                                                   duckdb::OperatorSinkFinalizeInput &input) const {
+	// JemallocExtension::Print();
+	return SinkFinalizeType::READY;
 }
 
 unique_ptr<GlobalSinkState> PhysicalPipelineBreaker::GetGlobalSinkState(ClientContext &context) const {
