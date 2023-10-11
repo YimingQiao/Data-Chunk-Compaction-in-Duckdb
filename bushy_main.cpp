@@ -107,7 +107,7 @@ int main() {
 	//	}
 
 	// set num of thread, we cannot use 128 threads because 2 threads are left for Perf.
-	{ con.Query("SET threads TO 64;"); }
+	{ con.Query("SET threads TO 128;"); }
 
 	// SEQ join query
 	//	{
@@ -164,8 +164,19 @@ int main() {
 		    " FROM student, department WHERE student.major_id = department.major_id) AS t2,"
 		    "WHERE t1.stu_id = t2.stu_id ORDER BY t1.stu_id LIMIT 1)";
 
-		std::string complex_join = "EXPLAIN ANALYZE SELECT * FROM " + left_deep + " AS ld INNER JOIN " + bushy +
-		                           " AS b ON ld.stu_id = b.stu_id";
+		//		std::string complex_join = "EXPLAIN ANALYZE SELECT * FROM " + left_deep + " AS ld INNER JOIN " + bushy +
+		//		                           " AS b ON ld.stu_id = b.stu_id";
+
+		for (size_t i = 0; i < 3; i++) {
+			left_deep = "(SELECT * FROM " + left_deep + " AS ls INNER JOIN student ON ls.stu_id = student.stu_id)";
+		}
+		left_deep = "(SELECT * FROM " + left_deep +
+		            " AS ls INNER JOIN student ON ls.stu_id = student.stu_id WHERE student.major_id <= 500000)";
+
+		std::string left_side = "(SELECT * FROM " + left_deep + " AS t)";
+		std::string right_side = "(SELECT * FROM " + left_deep + " ORDER BY stu_id LIMIT 1)";
+		std::string complex_join = "EXPLAIN ANALYZE SELECT * FROM " + left_side + " AS ls INNER JOIN " + right_side +
+		                           " AS rs ON ls.stu_id = rs.stu_id;";
 
 		auto result = con.Query(complex_join);
 		if (!result->HasError()) {
