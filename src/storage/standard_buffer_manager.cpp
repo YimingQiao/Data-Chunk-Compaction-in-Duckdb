@@ -57,9 +57,13 @@ void StandardBufferManager::SetTemporaryDirectory(const string &new_dir) {
 }
 
 StandardBufferManager::StandardBufferManager(DatabaseInstance &db, string tmp)
-    : BufferManager(), db(db), buffer_pool(db.GetBufferPool()), temp_directory(std::move(tmp)),
-      temporary_id(MAXIMUM_BLOCK), buffer_allocator(BufferAllocatorAllocate, BufferAllocatorFree,
-                                                    BufferAllocatorRealloc, make_uniq<BufferAllocatorData>(*this)) {
+    : BufferManager(),
+      db(db),
+      buffer_pool(db.GetBufferPool()),
+      temp_directory(std::move(tmp)),
+      temporary_id(MAXIMUM_BLOCK),
+      buffer_allocator(BufferAllocatorAllocate, BufferAllocatorFree, BufferAllocatorRealloc,
+                       make_uniq<BufferAllocatorData>(*this)) {
 	temp_block_manager = make_uniq<InMemoryBlockManager>(*this);
 }
 
@@ -168,7 +172,7 @@ BufferHandle StandardBufferManager::Pin(shared_ptr<BlockHandle> &handle) {
 	unique_ptr<FileBuffer> reusable_buffer;
 	auto reservation = EvictBlocksOrThrow(required_memory, &reusable_buffer, "failed to pin block of size %s%s",
 	                                      StringUtil::BytesToHumanReadableString(required_memory));
-	// lock the handle again and repeat the check (in case anybody loaded in the mean time)
+	// lock the handle again and repeat the check (in case anybody loaded in the meantime)
 	lock_guard<mutex> lock(handle->lock);
 	// check if the block is already loaded
 	if (handle->state == BlockState::BLOCK_LOADED) {
@@ -206,7 +210,7 @@ void StandardBufferManager::VerifyZeroReaders(shared_ptr<BlockHandle> &handle) {
 	auto replacement_buffer = make_uniq<FileBuffer>(Allocator::Get(db), handle->buffer->type,
 	                                                handle->memory_usage - Storage::BLOCK_HEADER_SIZE);
 	memcpy(replacement_buffer->buffer, handle->buffer->buffer, handle->buffer->size);
-	memset(handle->buffer->buffer, 0xa5, handle->buffer->size); // 0xa5 is default memory in debug mode
+	memset(handle->buffer->buffer, 0xa5, handle->buffer->size);  // 0xa5 is default memory in debug mode
 	handle->buffer = std::move(replacement_buffer);
 #endif
 }
@@ -325,7 +329,9 @@ class TemporaryFileHandle {
 
 public:
 	TemporaryFileHandle(idx_t temp_file_count, DatabaseInstance &db, const string &temp_directory, idx_t index)
-	    : max_allowed_index((1 << temp_file_count) * MAX_ALLOWED_INDEX_BASE), db(db), file_index(index),
+	    : max_allowed_index((1 << temp_file_count) * MAX_ALLOWED_INDEX_BASE),
+	      db(db),
+	      file_index(index),
 	      path(FileSystem::GetFileSystem(db).JoinPath(temp_directory,
 	                                                  "duckdb_temp_storage-" + to_string(index) + ".tmp")) {
 	}
@@ -397,8 +403,8 @@ private:
 			return;
 		}
 		auto &fs = FileSystem::GetFileSystem(db);
-		handle = fs.OpenFile(path, FileFlags::FILE_FLAGS_READ | FileFlags::FILE_FLAGS_WRITE |
-		                               FileFlags::FILE_FLAGS_FILE_CREATE);
+		handle = fs.OpenFile(
+		    path, FileFlags::FILE_FLAGS_READ | FileFlags::FILE_FLAGS_WRITE | FileFlags::FILE_FLAGS_FILE_CREATE);
 	}
 
 	void RemoveTempBlockIndex(TemporaryFileLock &, idx_t index) {
@@ -406,7 +412,7 @@ private:
 		if (index_manager.RemoveIndex(index)) {
 			// the max_index that is currently in use has decreased
 			// as a result we can truncate the file
-#ifndef WIN32 // this ended up causing issues when sorting
+#ifndef WIN32  // this ended up causing issues when sorting
 			auto max_index = index_manager.GetMaxIndex();
 			auto &fs = FileSystem::GetFileSystem(db);
 			fs.Truncate(*handle, GetPositionInFile(max_index + 1));
@@ -791,4 +797,4 @@ Allocator &StandardBufferManager::GetBufferAllocator() {
 	return buffer_allocator;
 }
 
-} // namespace duckdb
+}  // namespace duckdb

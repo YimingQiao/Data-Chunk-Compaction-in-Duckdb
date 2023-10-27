@@ -4,7 +4,7 @@
 #include "duckdb.hpp"
 
 int main() {
-	std::string db_name = "student.db";
+	std::string db_name = "student_uncompressed.db";
 	// nullptr means in-memory database.
 	duckdb::DuckDB db(db_name);
 	duckdb::Connection con(db);
@@ -107,78 +107,16 @@ int main() {
 	//	}
 
 	// set num of thread, we cannot use 128 threads because 2 threads are left for Perf.
-	{ con.Query("SET threads TO 128;"); }
+	{ con.Query("SET threads TO 126;"); }
 
 	// SEQ join query
-	//	{
-	//		std::string seq_sql_join =
-	//		    "EXPLAIN ANALYZE "
-	//		    "SELECT student.stu_id, department.name, room.type, type.info FROM student, department, room, type "
-	//		    "WHERE student.stu_id = room.stu_id AND student.major_id = department.major_id "
-	//		    "AND room.type = type.type;";
-	//		auto result = con.Query(seq_sql_join);
-	//		if (!result->HasError()) {
-	//			std::string plan = result->GetValue(1, 0).ToString();
-	//			std::cerr << plan << "\n";
-	//			// std::cerr << result->ToString() << "\n";
-	//		} else {
-	//			std::cerr << result->GetError() << "\n";
-	//		}
-	//	}
-
-	// BUSHY join query
-	//	{
-	//		std::string bushy_sql_join =
-	//		    "EXPLAIN ANALYZE "
-	//		    "SELECT t2.stu_id, t2.name, t1.type, t1.info "
-	//		    "FROM "
-	//		    "(SELECT room.stu_id, room.type, type.info "
-	//		    " FROM room INNER JOIN type ON room.type = type.type) AS t1,"
-	//		    "(SELECT student.stu_id, department.name "
-	//		    " FROM student, department WHERE student.major_id = department.major_id) AS t2,"
-	//		    "WHERE t1.stu_id = t2.stu_id;";
-	//		for (size_t i = 0; i < 1; ++i) {
-	//			auto result = con.Query(bushy_sql_join);
-	//			if (!result->HasError()) {
-	//				std::string plan = result->GetValue(1, 0).ToString();
-	//				std::cerr << plan << "\n";
-	//				// std::cerr << result->ToString() << "\n";
-	//			} else {
-	//				std::cerr << result->GetError() << "\n";
-	//			}
-	//		}
-	//	}
-
-	// Left-deep join Bushy
 	{
-		std::string left_deep =
-		    "(SELECT student.stu_id, department.name, room.type, type.info FROM student, department, room, type "
+		std::string seq_sql_join =
+		    "EXPLAIN ANALYZE "
+		    "SELECT student.stu_id, department.name, room.type, type.info FROM student, department, room, type "
 		    "WHERE student.stu_id = room.stu_id AND student.major_id = department.major_id "
-		    "AND room.type = type.type)";
-		std::string bushy =
-		    "(SELECT t2.stu_id, t2.name, t1.type, t1.info "
-		    "FROM "
-		    "(SELECT room.stu_id, room.type, type.info "
-		    " FROM room INNER JOIN type ON room.type = type.type) AS t1,"
-		    "(SELECT student.stu_id, department.name "
-		    " FROM student, department WHERE student.major_id = department.major_id) AS t2,"
-		    "WHERE t1.stu_id = t2.stu_id ORDER BY t1.stu_id LIMIT 1)";
-
-		//		std::string complex_join = "EXPLAIN ANALYZE SELECT * FROM " + left_deep + " AS ld INNER JOIN " + bushy +
-		//		                           " AS b ON ld.stu_id = b.stu_id";
-
-		for (size_t i = 0; i < 3; i++) {
-			left_deep = "(SELECT * FROM " + left_deep + " AS ls INNER JOIN student ON ls.stu_id = student.stu_id)";
-		}
-		left_deep = "(SELECT * FROM " + left_deep +
-		            " AS ls INNER JOIN student ON ls.stu_id = student.stu_id WHERE student.major_id <= 500000)";
-
-		std::string left_side = "(SELECT * FROM " + left_deep + " AS t)";
-		std::string right_side = "(SELECT * FROM " + left_deep + " ORDER BY stu_id LIMIT 1)";
-		std::string complex_join = "EXPLAIN ANALYZE SELECT * FROM " + left_side + " AS ls INNER JOIN " + right_side +
-		                           " AS rs ON ls.stu_id = rs.stu_id;";
-
-		auto result = con.Query(complex_join);
+		    "AND room.type = type.type;";
+		auto result = con.Query(seq_sql_join);
 		if (!result->HasError()) {
 			std::string plan = result->GetValue(1, 0).ToString();
 			std::cerr << plan << "\n";
@@ -187,6 +125,57 @@ int main() {
 			std::cerr << result->GetError() << "\n";
 		}
 	}
+
+	// BUSHY join query
+	//		{
+	//			std::string bushy_sql_join =
+	//			    "EXPLAIN ANALYZE "
+	//			    "SELECT t2.stu_id, t2.name, t1.type, t1.info "
+	//			    "FROM "
+	//			    "(SELECT room.stu_id, room.type, type.info "
+	//			    " FROM room INNER JOIN type ON room.type = type.type) AS t1,"
+	//			    "(SELECT student.stu_id, department.name "
+	//			    " FROM student, department WHERE student.major_id = department.major_id) AS t2,"
+	//			    "WHERE t1.stu_id = t2.stu_id;";
+	//			for (size_t i = 0; i < 1; ++i) {
+	//				auto result = con.Query(bushy_sql_join);
+	//				if (!result->HasError()) {
+	//					std::string plan = result->GetValue(1, 0).ToString();
+	//					std::cerr << plan << "\n";
+	//					// std::cerr << result->ToString() << "\n";
+	//				} else {
+	//					std::cerr << result->GetError() << "\n";
+	//				}
+	//			}
+	//		}
+
+	// Left-deep join Bushy
+	//	{
+	//		std::string left_deep =
+	//		    "(SELECT student.stu_id, department.name, room.type, type.info FROM student, department, room, type "
+	//		    "WHERE student.stu_id = room.stu_id AND student.major_id = department.major_id "
+	//		    "AND room.type = type.type)";
+	//
+	//		for (size_t i = 0; i < 3; i++) {
+	//			left_deep = "(SELECT * FROM " + left_deep + " AS ls INNER JOIN student ON ls.stu_id = student.stu_id)";
+	//		}
+	//		left_deep = "(SELECT * FROM " + left_deep +
+	//		            " AS ls INNER JOIN student ON ls.stu_id = student.stu_id WHERE student.major_id <= 500000)";
+	//
+	//		std::string left_side = "(SELECT * FROM " + left_deep + " AS t)";
+	//		std::string right_side = "(SELECT * FROM " + left_deep + " ORDER BY stu_id LIMIT 1)";
+	//		std::string complex_join = "EXPLAIN ANALYZE SELECT * FROM " + left_side + " AS ls INNER JOIN " + right_side
+	//+ 		                           " AS rs ON ls.stu_id = rs.stu_id;";
+	//
+	//		auto result = con.Query(complex_join);
+	//		if (!result->HasError()) {
+	//			std::string plan = result->GetValue(1, 0).ToString();
+	//			std::cerr << plan << "\n";
+	//			// std::cerr << result->ToString() << "\n";
+	//		} else {
+	//			std::cerr << result->GetError() << "\n";
+	//		}
+	//	}
 
 	return 0;
 }

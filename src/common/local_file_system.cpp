@@ -1,5 +1,10 @@
 #include "duckdb/common/local_file_system.hpp"
 
+#include <sys/stat.h>
+
+#include <cstdint>
+#include <cstdio>
+
 #include "duckdb/common/checksum.hpp"
 #include "duckdb/common/exception.hpp"
 #include "duckdb/common/file_opener.hpp"
@@ -10,10 +15,6 @@
 #include "duckdb/main/client_context.hpp"
 #include "duckdb/main/database.hpp"
 
-#include <cstdint>
-#include <cstdio>
-#include <sys/stat.h>
-
 #ifndef _WIN32
 #include <dirent.h>
 #include <fcntl.h>
@@ -21,17 +22,18 @@
 #include <sys/types.h>
 #include <unistd.h>
 #else
-#include "duckdb/common/windows_util.hpp"
-
 #include <io.h>
+
 #include <string>
+
+#include "duckdb/common/windows_util.hpp"
 
 #ifdef __MINGW32__
 // need to manually define this for mingw
 extern "C" WINBASEAPI BOOL WINAPI GetPhysicallyInstalledSystemMemory(PULONGLONG);
 #endif
 
-#undef FILE_CREATE // woo mingw
+#undef FILE_CREATE  // woo mingw
 #endif
 
 namespace duckdb {
@@ -137,30 +139,30 @@ public:
 	};
 };
 
-static FileType GetFileTypeInternal(int fd) { // LCOV_EXCL_START
+static FileType GetFileTypeInternal(int fd) {  // LCOV_EXCL_START
 	struct stat s;
 	if (fstat(fd, &s) == -1) {
 		return FileType::FILE_TYPE_INVALID;
 	}
 	switch (s.st_mode & S_IFMT) {
-	case S_IFBLK:
-		return FileType::FILE_TYPE_BLOCKDEV;
-	case S_IFCHR:
-		return FileType::FILE_TYPE_CHARDEV;
-	case S_IFIFO:
-		return FileType::FILE_TYPE_FIFO;
-	case S_IFDIR:
-		return FileType::FILE_TYPE_DIR;
-	case S_IFLNK:
-		return FileType::FILE_TYPE_LINK;
-	case S_IFREG:
-		return FileType::FILE_TYPE_REGULAR;
-	case S_IFSOCK:
-		return FileType::FILE_TYPE_SOCKET;
-	default:
-		return FileType::FILE_TYPE_INVALID;
+		case S_IFBLK:
+			return FileType::FILE_TYPE_BLOCKDEV;
+		case S_IFCHR:
+			return FileType::FILE_TYPE_CHARDEV;
+		case S_IFIFO:
+			return FileType::FILE_TYPE_FIFO;
+		case S_IFDIR:
+			return FileType::FILE_TYPE_DIR;
+		case S_IFLNK:
+			return FileType::FILE_TYPE_LINK;
+		case S_IFREG:
+			return FileType::FILE_TYPE_REGULAR;
+		case S_IFSOCK:
+			return FileType::FILE_TYPE_SOCKET;
+		default:
+			return FileType::FILE_TYPE_INVALID;
 	}
-} // LCOV_EXCL_STOP
+}  // LCOV_EXCL_STOP
 
 unique_ptr<FileHandle> LocalFileSystem::OpenFile(const string &path_p, uint8_t flags, FileLockType lock_type,
                                                  FileCompressionType compression, FileOpener *opener) {
@@ -263,7 +265,12 @@ void LocalFileSystem::Read(FileHandle &handle, void *buffer, int64_t nr_bytes, i
 	int fd = handle.Cast<UnixFileHandle>().fd;
 	auto read_buffer = char_ptr_cast(buffer);
 	while (nr_bytes > 0) {
+		// yiqiao: It is the IO bottleneck! Multi-threading cannot help pread().
+		Profiler profiler;
+		profiler.Start();
 		int64_t bytes_read = pread(fd, read_buffer, nr_bytes, location);
+		BeeProfiler::Get().InsertRecord("{LocalFileSystem::Read} pread", profiler.Elapsed());
+
 		if (bytes_read == -1) {
 			throw IOException("Could not read from file \"%s\": %s", handle.path, strerror(errno));
 		}
@@ -477,8 +484,7 @@ constexpr char PIPE_PREFIX[] = "\\\\.\\pipe\\";
 std::string LocalFileSystem::GetLastErrorAsString() {
 	// Get the error message, if any.
 	DWORD errorMessageID = GetLastError();
-	if (errorMessageID == 0)
-		return std::string(); // No error message has been recorded
+	if (errorMessageID == 0) return std::string();  // No error message has been recorded
 
 	LPSTR messageBuffer = nullptr;
 	idx_t size =
@@ -842,15 +848,13 @@ static bool IsSymbolicLink(const string &path) {
 	return (lstat(path.c_str(), &status) != -1 && S_ISLNK(status.st_mode));
 #else
 	auto attributes = WindowsGetFileAttributes(path);
-	if (attributes == INVALID_FILE_ATTRIBUTES)
-		return false;
+	if (attributes == INVALID_FILE_ATTRIBUTES) return false;
 	return attributes & FILE_ATTRIBUTE_REPARSE_POINT;
 #endif
 }
 
 static void RecursiveGlobDirectories(FileSystem &fs, const string &path, vector<string> &result, bool match_directory,
                                      bool join_path) {
-
 	fs.ListFiles(path, [&](const string &fname, bool is_directory) {
 		string concat;
 		if (join_path) {
@@ -1040,4 +1044,4 @@ unique_ptr<FileSystem> FileSystem::CreateLocal() {
 	return make_uniq<LocalFileSystem>();
 }
 
-} // namespace duckdb
+}  // namespace duckdb

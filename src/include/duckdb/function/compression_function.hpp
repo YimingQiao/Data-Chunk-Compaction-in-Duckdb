@@ -8,13 +8,15 @@
 
 #pragma once
 
+#include <iostream>
+
 #include "duckdb/common/common.hpp"
-#include "duckdb/function/function.hpp"
 #include "duckdb/common/enums/compression_type.hpp"
 #include "duckdb/common/map.hpp"
-#include "duckdb/storage/storage_info.hpp"
 #include "duckdb/common/mutex.hpp"
+#include "duckdb/function/function.hpp"
 #include "duckdb/storage/data_pointer.hpp"
+#include "duckdb/storage/storage_info.hpp"
 
 namespace duckdb {
 class DatabaseInstance;
@@ -65,9 +67,9 @@ struct CompressedSegmentState {
 	}
 
 	//! Display info for PRAGMA storage_info
-	virtual string GetSegmentInfo() const { // LCOV_EXCL_START
+	virtual string GetSegmentInfo() const {  // LCOV_EXCL_START
 		return "";
-	} // LCOV_EXCL_STOP
+	}  // LCOV_EXCL_STOP
 
 	template <class TARGET>
 	TARGET &Cast() {
@@ -179,11 +181,26 @@ public:
 	                    compression_serialize_state_t serialize_state = nullptr,
 	                    compression_deserialize_state_t deserialize_state = nullptr,
 	                    compression_cleanup_state_t cleanup_state = nullptr)
-	    : type(type), data_type(data_type), init_analyze(init_analyze), analyze(analyze), final_analyze(final_analyze),
-	      init_compression(init_compression), compress(compress), compress_finalize(compress_finalize),
-	      init_scan(init_scan), scan_vector(scan_vector), scan_partial(scan_partial), fetch_row(fetch_row), skip(skip),
-	      init_segment(init_segment), init_append(init_append), append(append), finalize_append(finalize_append),
-	      revert_append(revert_append), serialize_state(serialize_state), deserialize_state(deserialize_state),
+	    : type(type),
+	      data_type(data_type),
+	      init_analyze(init_analyze),
+	      analyze(analyze),
+	      final_analyze(final_analyze),
+	      init_compression(init_compression),
+	      compress(compress),
+	      compress_finalize(compress_finalize),
+	      init_scan(init_scan),
+	      scan_vector(scan_vector),
+	      scan_partial(scan_partial),
+	      fetch_row(fetch_row),
+	      skip(skip),
+	      init_segment(init_segment),
+	      init_append(init_append),
+	      append(append),
+	      finalize_append(finalize_append),
+	      revert_append(revert_append),
+	      serialize_state(serialize_state),
+	      deserialize_state(deserialize_state),
 	      cleanup_state(cleanup_state) {
 	}
 
@@ -258,4 +275,4 @@ struct CompressionFunctionSet {
 	map<CompressionType, map<PhysicalType, CompressionFunction>> functions;
 };
 
-} // namespace duckdb
+}  // namespace duckdb

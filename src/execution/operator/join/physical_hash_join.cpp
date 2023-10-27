@@ -22,9 +22,9 @@ PhysicalHashJoin::PhysicalHashJoin(LogicalOperator &op, unique_ptr<PhysicalOpera
                                    const vector<idx_t> &right_projection_map_p, vector<LogicalType> delim_types,
                                    idx_t estimated_cardinality, PerfectHashJoinStats perfect_join_stats)
     : PhysicalComparisonJoin(op, PhysicalOperatorType::HASH_JOIN, std::move(cond), join_type, estimated_cardinality),
-      right_projection_map(right_projection_map_p), delim_types(std::move(delim_types)),
+      right_projection_map(right_projection_map_p),
+      delim_types(std::move(delim_types)),
       perfect_join_statistics(std::move(perfect_join_stats)) {
-
 	children.push_back(std::move(left));
 	children.push_back(std::move(right));
 
@@ -184,6 +184,9 @@ unique_ptr<LocalSinkState> PhysicalHashJoin::GetLocalSinkState(ExecutionContext 
 SinkResultType PhysicalHashJoin::Sink(ExecutionContext &context, DataChunk &chunk, OperatorSinkInput &input) const {
 	auto &lstate = input.local_state.Cast<HashJoinLocalSinkState>();
 
+	context.thread.spike_profiler.StartTiming("[HashJoin - (1) Partition Table - " + conditions[0].left->GetName() +
+	                                          "=" + conditions[0].right->GetName() + "]");
+
 	// resolve the join keys for the right chunk
 	lstate.join_keys.Reset();
 	lstate.build_executor.Execute(chunk, lstate.join_keys);
@@ -207,10 +210,16 @@ SinkResultType PhysicalHashJoin::Sink(ExecutionContext &context, DataChunk &chun
 		ht.Build(lstate.append_state, lstate.join_keys, lstate.build_chunk);
 	}
 
+	context.thread.spike_profiler.EndTiming("[HashJoin - (1) Partition Table - " + conditions[0].left->GetName() + "=" +
+	                                        conditions[0].right->GetName() + "]");
+
 	return SinkResultType::NEED_MORE_INPUT;
 }
 
 SinkCombineResultType PhysicalHashJoin::Combine(ExecutionContext &context, OperatorSinkCombineInput &input) const {
+	context.thread.spike_profiler.StartTiming("[HashJoin - (1) Partition Table - " + conditions[0].left->GetName() +
+	                                          "=" + conditions[0].right->GetName() + "]");
+
 	auto &gstate = input.global_state.Cast<HashJoinGlobalSinkState>();
 	auto &lstate = input.local_state.Cast<HashJoinLocalSinkState>();
 	if (lstate.hash_table) {
@@ -222,6 +231,9 @@ SinkCombineResultType PhysicalHashJoin::Combine(ExecutionContext &context, Opera
 	context.thread.profiler.Flush(*this, lstate.build_executor, "build_executor", 1);
 	client_profiler.Flush(context.thread.profiler);
 
+	context.thread.spike_profiler.EndTiming("[HashJoin - (1) Partition Table - " + conditions[0].left->GetName() + "=" +
+	                                        conditions[0].right->GetName() + "]");
+
 	return SinkCombineResultType::FINISHED;
 }
 
@@ -232,13 +244,24 @@ class HashJoinFinalizeTask : public ExecutorTask {
 public:
 	HashJoinFinalizeTask(shared_ptr<Event> event_p, ClientContext &context, HashJoinGlobalSinkState &sink_p,
 	                     idx_t chunk_idx_from_p, idx_t chunk_idx_to_p, bool parallel_p)
-	    : ExecutorTask(context), event(std::move(event_p)), sink(sink_p), chunk_idx_from(chunk_idx_from_p),
-	      chunk_idx_to(chunk_idx_to_p), parallel(parallel_p) {
+	    : ExecutorTask(context),
+	      event(std::move(event_p)),
+	      sink(sink_p),
+	      chunk_idx_from(chunk_idx_from_p),
+	      chunk_idx_to(chunk_idx_to_p),
+	      parallel(parallel_p) {
 	}
 
 	TaskExecutionResult ExecuteTask(TaskExecutionMode mode) override {
+		SpikeProfiler spike_profiler;
+		spike_profiler.StartTiming("[HashJoin - (2) Build Table - " + sink.hash_table->conditions[0].left->GetName() +
+		                           "=" + sink.hash_table->conditions[0].right->GetName() + "]");
+
 		sink.hash_table->Finalize(chunk_idx_from, chunk_idx_to, parallel);
 		event->FinishTask();
+
+		spike_profiler.EndTiming("[HashJoin - (2) Build Table - " + sink.hash_table->conditions[0].left->GetName() +
+		                         "=" + sink.hash_table->conditions[0].right->GetName() + "]");
 		return TaskExecutionResult::TASK_FINISHED;
 	}
 
@@ -265,7 +288,17 @@ public:
 		vector<shared_ptr<Task>> finalize_tasks;
 		auto &ht = *sink.hash_table;
 		const auto chunk_count = ht.GetDataCollection().ChunkCount();
-		const idx_t num_threads = TaskScheduler::GetScheduler(context).NumberOfThreads();
+
+		// yiqiao: modify the #thread for hash table building
+		// const idx_t num_threads = TaskScheduler::GetScheduler(context).NumberOfThreads();
+		const idx_t active_threads = TaskScheduler::GetScheduler(context).NumberOfThreads();
+		const idx_t num_threads = active_threads / 16;
+		auto now = std::chrono::system_clock::now();
+		auto duration = now.time_since_epoch();
+		auto milliseconds = std::chrono::duration_cast<std::chrono::milliseconds>(duration).count() % 1000000;
+		std::cerr << " [Open] Building Hash Table\t #task/#thread: " + std::to_string(num_threads) + "/" +
+		                 std::to_string(active_threads) + "\tTick: " + std::to_string(milliseconds) + "ms\n";
+
 		if (num_threads == 1 || (ht.Count() < PARALLEL_CONSTRUCT_THRESHOLD && !context.config.verify_parallelism)) {
 			// Single-threaded finalize
 			finalize_tasks.push_back(
@@ -465,6 +498,9 @@ OperatorResultType PhysicalHashJoin::ExecuteInternal(ExecutionContext &context, 
 	D_ASSERT(sink.finalized);
 	D_ASSERT(!sink.scanned_data);
 
+	context.thread.spike_profiler.StartTiming("[HashJoin - (3) Probe Table - " + conditions[0].left->GetName() + "=" +
+	                                          conditions[0].right->GetName() + "]");
+
 	// some initialization for external hash join
 	if (sink.external && !state.initialized) {
 		if (!sink.probe_spill) {
@@ -511,6 +547,9 @@ OperatorResultType PhysicalHashJoin::ExecuteInternal(ExecutionContext &context, 
 		state.scan_structure = sink.hash_table->Probe(state.join_keys, state.join_key_state);
 	}
 	state.scan_structure->Next(state.join_keys, input, chunk);
+
+	context.thread.spike_profiler.EndTiming("[HashJoin - (3) Probe Table - " + conditions[0].left->GetName() + "=" +
+	                                        conditions[0].right->GetName() + "]");
 	return OperatorResultType::HAVE_MORE_OUTPUT;
 }
 
@@ -632,8 +671,13 @@ unique_ptr<LocalSourceState> PhysicalHashJoin::GetLocalSourceState(ExecutionCont
 }
 
 HashJoinGlobalSourceState::HashJoinGlobalSourceState(const PhysicalHashJoin &op, ClientContext &context)
-    : op(op), global_stage(HashJoinSourceStage::INIT), build_chunk_count(0), build_chunk_done(0), probe_chunk_count(0),
-      probe_chunk_done(0), probe_count(op.children[0]->estimated_cardinality),
+    : op(op),
+      global_stage(HashJoinSourceStage::INIT),
+      build_chunk_count(0),
+      build_chunk_done(0),
+      probe_chunk_count(0),
+      probe_chunk_done(0),
+      probe_count(op.children[0]->estimated_cardinality),
       parallel_scan_chunk_count(context.config.verify_parallelism ? 1 : 120) {
 }
 
@@ -655,29 +699,29 @@ void HashJoinGlobalSourceState::Initialize(HashJoinGlobalSinkState &sink) {
 
 void HashJoinGlobalSourceState::TryPrepareNextStage(HashJoinGlobalSinkState &sink) {
 	switch (global_stage.load()) {
-	case HashJoinSourceStage::BUILD:
-		if (build_chunk_done == build_chunk_count) {
-			sink.hash_table->GetDataCollection().VerifyEverythingPinned();
-			sink.hash_table->finalized = true;
-			PrepareProbe(sink);
-		}
-		break;
-	case HashJoinSourceStage::PROBE:
-		if (probe_chunk_done == probe_chunk_count) {
-			if (IsRightOuterJoin(op.join_type)) {
-				PrepareScanHT(sink);
-			} else {
+		case HashJoinSourceStage::BUILD:
+			if (build_chunk_done == build_chunk_count) {
+				sink.hash_table->GetDataCollection().VerifyEverythingPinned();
+				sink.hash_table->finalized = true;
+				PrepareProbe(sink);
+			}
+			break;
+		case HashJoinSourceStage::PROBE:
+			if (probe_chunk_done == probe_chunk_count) {
+				if (IsRightOuterJoin(op.join_type)) {
+					PrepareScanHT(sink);
+				} else {
+					PrepareBuild(sink);
+				}
+			}
+			break;
+		case HashJoinSourceStage::SCAN_HT:
+			if (full_outer_chunk_done == full_outer_chunk_count) {
 				PrepareBuild(sink);
 			}
-		}
-		break;
-	case HashJoinSourceStage::SCAN_HT:
-		if (full_outer_chunk_done == full_outer_chunk_count) {
-			PrepareBuild(sink);
-		}
-		break;
-	default:
-		break;
+			break;
+		default:
+			break;
 	}
 }
 
@@ -743,36 +787,36 @@ bool HashJoinGlobalSourceState::AssignTask(HashJoinGlobalSinkState &sink, HashJo
 
 	lock_guard<mutex> guard(lock);
 	switch (global_stage.load()) {
-	case HashJoinSourceStage::BUILD:
-		if (build_chunk_idx != build_chunk_count) {
-			lstate.local_stage = global_stage;
-			lstate.build_chunk_idx_from = build_chunk_idx;
-			build_chunk_idx = MinValue<idx_t>(build_chunk_count, build_chunk_idx + build_chunks_per_thread);
-			lstate.build_chunk_idx_to = build_chunk_idx;
-			return true;
-		}
-		break;
-	case HashJoinSourceStage::PROBE:
-		if (sink.probe_spill->consumer && sink.probe_spill->consumer->AssignChunk(lstate.probe_local_scan)) {
-			lstate.local_stage = global_stage;
-			lstate.empty_ht_probe_in_progress = false;
-			return true;
-		}
-		break;
-	case HashJoinSourceStage::SCAN_HT:
-		if (full_outer_chunk_idx != full_outer_chunk_count) {
-			lstate.local_stage = global_stage;
-			lstate.full_outer_chunk_idx_from = full_outer_chunk_idx;
-			full_outer_chunk_idx =
-			    MinValue<idx_t>(full_outer_chunk_count, full_outer_chunk_idx + full_outer_chunks_per_thread);
-			lstate.full_outer_chunk_idx_to = full_outer_chunk_idx;
-			return true;
-		}
-		break;
-	case HashJoinSourceStage::DONE:
-		break;
-	default:
-		throw InternalException("Unexpected HashJoinSourceStage in AssignTask!");
+		case HashJoinSourceStage::BUILD:
+			if (build_chunk_idx != build_chunk_count) {
+				lstate.local_stage = global_stage;
+				lstate.build_chunk_idx_from = build_chunk_idx;
+				build_chunk_idx = MinValue<idx_t>(build_chunk_count, build_chunk_idx + build_chunks_per_thread);
+				lstate.build_chunk_idx_to = build_chunk_idx;
+				return true;
+			}
+			break;
+		case HashJoinSourceStage::PROBE:
+			if (sink.probe_spill->consumer && sink.probe_spill->consumer->AssignChunk(lstate.probe_local_scan)) {
+				lstate.local_stage = global_stage;
+				lstate.empty_ht_probe_in_progress = false;
+				return true;
+			}
+			break;
+		case HashJoinSourceStage::SCAN_HT:
+			if (full_outer_chunk_idx != full_outer_chunk_count) {
+				lstate.local_stage = global_stage;
+				lstate.full_outer_chunk_idx_from = full_outer_chunk_idx;
+				full_outer_chunk_idx =
+				    MinValue<idx_t>(full_outer_chunk_count, full_outer_chunk_idx + full_outer_chunks_per_thread);
+				lstate.full_outer_chunk_idx_to = full_outer_chunk_idx;
+				return true;
+			}
+			break;
+		case HashJoinSourceStage::DONE:
+			break;
+		default:
+			throw InternalException("Unexpected HashJoinSourceStage in AssignTask!");
 	}
 	return false;
 }
@@ -801,31 +845,31 @@ HashJoinLocalSourceState::HashJoinLocalSourceState(const PhysicalHashJoin &op, A
 void HashJoinLocalSourceState::ExecuteTask(HashJoinGlobalSinkState &sink, HashJoinGlobalSourceState &gstate,
                                            DataChunk &chunk) {
 	switch (local_stage) {
-	case HashJoinSourceStage::BUILD:
-		ExternalBuild(sink, gstate);
-		break;
-	case HashJoinSourceStage::PROBE:
-		ExternalProbe(sink, gstate, chunk);
-		break;
-	case HashJoinSourceStage::SCAN_HT:
-		ExternalScanHT(sink, gstate, chunk);
-		break;
-	default:
-		throw InternalException("Unexpected HashJoinSourceStage in ExecuteTask!");
+		case HashJoinSourceStage::BUILD:
+			ExternalBuild(sink, gstate);
+			break;
+		case HashJoinSourceStage::PROBE:
+			ExternalProbe(sink, gstate, chunk);
+			break;
+		case HashJoinSourceStage::SCAN_HT:
+			ExternalScanHT(sink, gstate, chunk);
+			break;
+		default:
+			throw InternalException("Unexpected HashJoinSourceStage in ExecuteTask!");
 	}
 }
 
 bool HashJoinLocalSourceState::TaskFinished() {
 	switch (local_stage) {
-	case HashJoinSourceStage::INIT:
-	case HashJoinSourceStage::BUILD:
-		return true;
-	case HashJoinSourceStage::PROBE:
-		return scan_structure == nullptr && !empty_ht_probe_in_progress;
-	case HashJoinSourceStage::SCAN_HT:
-		return full_outer_scan_state == nullptr;
-	default:
-		throw InternalException("Unexpected HashJoinSourceStage in TaskFinished!");
+		case HashJoinSourceStage::INIT:
+		case HashJoinSourceStage::BUILD:
+			return true;
+		case HashJoinSourceStage::PROBE:
+			return scan_structure == nullptr && !empty_ht_probe_in_progress;
+		case HashJoinSourceStage::SCAN_HT:
+			return full_outer_scan_state == nullptr;
+		default:
+			throw InternalException("Unexpected HashJoinSourceStage in TaskFinished!");
 	}
 }
 
@@ -926,4 +970,4 @@ SourceResultType PhysicalHashJoin::GetData(ExecutionContext &context, DataChunk 
 	return chunk.size() == 0 ? SourceResultType::FINISHED : SourceResultType::HAVE_MORE_OUTPUT;
 }
 
-} // namespace duckdb
+}  // namespace duckdb

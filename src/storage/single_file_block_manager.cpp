@@ -1,17 +1,17 @@
 #include "duckdb/storage/single_file_block_manager.hpp"
 
+#include <algorithm>
+#include <cstring>
+
 #include "duckdb/common/allocator.hpp"
 #include "duckdb/common/checksum.hpp"
 #include "duckdb/common/exception.hpp"
 #include "duckdb/common/serializer/memory_stream.hpp"
-#include "duckdb/storage/metadata/metadata_reader.hpp"
-#include "duckdb/storage/metadata/metadata_writer.hpp"
-#include "duckdb/storage/buffer_manager.hpp"
 #include "duckdb/main/config.hpp"
 #include "duckdb/main/database.hpp"
-
-#include <algorithm>
-#include <cstring>
+#include "duckdb/storage/buffer_manager.hpp"
+#include "duckdb/storage/metadata/metadata_reader.hpp"
+#include "duckdb/storage/metadata/metadata_writer.hpp"
 
 namespace duckdb {
 
@@ -113,10 +113,13 @@ T DeserializeHeaderStructure(data_ptr_t ptr) {
 }
 
 SingleFileBlockManager::SingleFileBlockManager(AttachedDatabase &db, string path_p, StorageManagerOptions options)
-    : BlockManager(BufferManager::GetBufferManager(db)), db(db), path(std::move(path_p)),
+    : BlockManager(BufferManager::GetBufferManager(db)),
+      db(db),
+      path(std::move(path_p)),
       header_buffer(Allocator::Get(db), FileBufferType::MANAGED_BUFFER,
                     Storage::FILE_HEADER_SIZE - Storage::BLOCK_HEADER_SIZE),
-      iteration_count(0), options(options) {
+      iteration_count(0),
+      options(options) {
 }
 
 void SingleFileBlockManager::GetFileFlags(uint8_t &flags, FileLockType &lock, bool create_new) {
@@ -510,4 +513,4 @@ void SingleFileBlockManager::WriteHeader(DatabaseHeader header) {
 	handle->Sync();
 }
 
-} // namespace duckdb
+}  // namespace duckdb

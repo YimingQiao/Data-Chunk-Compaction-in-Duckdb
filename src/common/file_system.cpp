@@ -1,20 +1,20 @@
 #include "duckdb/common/file_system.hpp"
 
+#include <cstdint>
+#include <cstdio>
+
 #include "duckdb/common/checksum.hpp"
 #include "duckdb/common/exception.hpp"
 #include "duckdb/common/file_opener.hpp"
 #include "duckdb/common/helper.hpp"
 #include "duckdb/common/string_util.hpp"
 #include "duckdb/common/windows.hpp"
+#include "duckdb/common/windows_util.hpp"
 #include "duckdb/function/scalar/string_functions.hpp"
 #include "duckdb/main/client_context.hpp"
 #include "duckdb/main/client_data.hpp"
 #include "duckdb/main/database.hpp"
 #include "duckdb/main/extension_helper.hpp"
-#include "duckdb/common/windows_util.hpp"
-
-#include <cstdint>
-#include <cstdio>
 
 #ifndef _WIN32
 #include <dirent.h>
@@ -32,15 +32,16 @@
 #endif
 
 #else
-#include <string>
 #include <sysinfoapi.h>
+
+#include <string>
 
 #ifdef __MINGW32__
 // need to manually define this for mingw
 extern "C" WINBASEAPI BOOL WINAPI GetPhysicallyInstalledSystemMemory(PULONGLONG);
 #endif
 
-#undef FILE_CREATE // woo mingw
+#undef FILE_CREATE  // woo mingw
 #endif
 
 namespace duckdb {
@@ -358,12 +359,12 @@ void FileSystem::FileSync(FileHandle &handle) {
 bool FileSystem::HasGlob(const string &str) {
 	for (idx_t i = 0; i < str.size(); i++) {
 		switch (str[i]) {
-		case '*':
-		case '?':
-		case '[':
-			return true;
-		default:
-			break;
+			case '*':
+			case '?':
+			case '[':
+				return true;
+			default:
+				break;
 		}
 	}
 	return false;
@@ -544,4 +545,4 @@ bool FileSystem::IsRemoteFile(const string &path) {
 	return false;
 }
 
-} // namespace duckdb
+}  // namespace duckdb

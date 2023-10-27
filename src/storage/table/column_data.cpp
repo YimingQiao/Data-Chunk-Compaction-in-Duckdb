@@ -1,29 +1,34 @@
 #include "duckdb/storage/table/column_data.hpp"
 
+#include "duckdb/common/serializer/binary_deserializer.hpp"
+#include "duckdb/common/serializer/read_stream.hpp"
 #include "duckdb/common/vector_operations/vector_operations.hpp"
 #include "duckdb/function/compression_function.hpp"
 #include "duckdb/planner/table_filter.hpp"
 #include "duckdb/storage/data_pointer.hpp"
 #include "duckdb/storage/data_table.hpp"
 #include "duckdb/storage/statistics/distinct_statistics.hpp"
+#include "duckdb/storage/table/append_state.hpp"
 #include "duckdb/storage/table/column_data_checkpointer.hpp"
 #include "duckdb/storage/table/list_column_data.hpp"
+#include "duckdb/storage/table/scan_state.hpp"
 #include "duckdb/storage/table/standard_column_data.hpp"
-
 #include "duckdb/storage/table/struct_column_data.hpp"
 #include "duckdb/storage/table/update_segment.hpp"
 #include "duckdb/storage/table_storage_info.hpp"
-#include "duckdb/storage/table/append_state.hpp"
-#include "duckdb/storage/table/scan_state.hpp"
-#include "duckdb/common/serializer/read_stream.hpp"
-#include "duckdb/common/serializer/binary_deserializer.hpp"
 
 namespace duckdb {
 
 ColumnData::ColumnData(BlockManager &block_manager, DataTableInfo &info, idx_t column_index, idx_t start_row,
                        LogicalType type_p, optional_ptr<ColumnData> parent)
-    : start(start_row), count(0), block_manager(block_manager), info(info), column_index(column_index),
-      type(std::move(type_p)), parent(parent), version(0) {
+    : start(start_row),
+      count(0),
+      block_manager(block_manager),
+      info(info),
+      column_index(column_index),
+      type(std::move(type_p)),
+      parent(parent),
+      version(0) {
 	if (!parent) {
 		stats = make_uniq<SegmentStatistics>(type);
 	}
@@ -107,6 +112,7 @@ idx_t ColumnData::ScanVector(ColumnScanState &state, Vector &result, idx_t remai
 	}
 	D_ASSERT(state.current->type == type);
 	idx_t initial_remaining = remaining;
+
 	while (remaining > 0) {
 		D_ASSERT(state.row_index >= state.current->start &&
 		         state.row_index <= state.current->start + state.current->count);
@@ -145,6 +151,7 @@ idx_t ColumnData::ScanVector(TransactionData transaction, idx_t vector_index, Co
 		has_updates = updates ? true : false;
 	}
 	auto scan_count = ScanVector(state, result, STANDARD_VECTOR_SIZE, has_updates);
+
 	if (has_updates) {
 		lock_guard<mutex> update_guard(update_lock);
 		if (!ALLOW_UPDATES && updates->HasUncommittedUpdates(vector_index)) {
@@ -590,4 +597,4 @@ unique_ptr<ColumnData> ColumnData::CreateColumnUnique(BlockManager &block_manage
 	                                                                       type, parent);
 }
 
-} // namespace duckdb
+}  // namespace duckdb

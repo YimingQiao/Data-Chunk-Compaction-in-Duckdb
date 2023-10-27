@@ -141,9 +141,15 @@ bool Pipeline::ScheduleParallel(shared_ptr<Event> &event) {
 	//		max_threads = kMultiThread;
 	//	}
 
-	// Hash Table Building
+	// Hash Table Partition
 	if (source->GetName() == "SEQ_SCAN " && sink->GetName() == "HASH_JOIN" && operators.empty()) {
-		max_threads = 4;
+		auto *scan = (PhysicalTableScan *)source.get();
+		string table_name = scan->function.to_string(scan->bind_data.get());
+
+		if (table_name == "room")
+			max_threads = 48;
+		else
+			max_threads = 1;
 	}
 
 	if (source->GetName() == "BREAKER") {

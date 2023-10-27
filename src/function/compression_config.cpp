@@ -1,7 +1,9 @@
-#include "duckdb/main/config.hpp"
-#include "duckdb/function/compression_function.hpp"
-#include "duckdb/function/compression/compression.hpp"
+#include <iostream>
+
 #include "duckdb/common/pair.hpp"
+#include "duckdb/function/compression/compression.hpp"
+#include "duckdb/function/compression_function.hpp"
+#include "duckdb/main/config.hpp"
 
 namespace duckdb {
 
@@ -71,17 +73,19 @@ static void TryLoadCompression(DBConfig &config, vector<reference<CompressionFun
 vector<reference<CompressionFunction>> DBConfig::GetCompressionFunctions(PhysicalType data_type) {
 	vector<reference<CompressionFunction>> result;
 	TryLoadCompression(*this, result, CompressionType::COMPRESSION_UNCOMPRESSED, data_type);
-	TryLoadCompression(*this, result, CompressionType::COMPRESSION_RLE, data_type);
-	TryLoadCompression(*this, result, CompressionType::COMPRESSION_BITPACKING, data_type);
-	TryLoadCompression(*this, result, CompressionType::COMPRESSION_DICTIONARY, data_type);
-	TryLoadCompression(*this, result, CompressionType::COMPRESSION_CHIMP, data_type);
-	TryLoadCompression(*this, result, CompressionType::COMPRESSION_PATAS, data_type);
-	TryLoadCompression(*this, result, CompressionType::COMPRESSION_FSST, data_type);
+	// yiqiao: disable all compression for now
+	//	TryLoadCompression(*this, result, CompressionType::COMPRESSION_RLE, data_type);
+	//	TryLoadCompression(*this, result, CompressionType::COMPRESSION_BITPACKING, data_type);
+	//	TryLoadCompression(*this, result, CompressionType::COMPRESSION_DICTIONARY, data_type);
+	//	TryLoadCompression(*this, result, CompressionType::COMPRESSION_CHIMP, data_type);
+	//	TryLoadCompression(*this, result, CompressionType::COMPRESSION_PATAS, data_type);
+	//	TryLoadCompression(*this, result, CompressionType::COMPRESSION_FSST, data_type);
 	return result;
 }
 
 optional_ptr<CompressionFunction> DBConfig::GetCompressionFunction(CompressionType type, PhysicalType data_type) {
 	lock_guard<mutex> l(compression_functions->lock);
+
 	// check if the function is already loaded
 	auto function = FindCompressionFunction(*compression_functions, type, data_type);
 	if (function) {
@@ -91,4 +95,4 @@ optional_ptr<CompressionFunction> DBConfig::GetCompressionFunction(CompressionTy
 	return LoadCompressionFunction(*compression_functions, type, data_type);
 }
 
-} // namespace duckdb
+}  // namespace duckdb

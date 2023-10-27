@@ -1,11 +1,11 @@
 #include "duckdb/execution/operator/scan/physical_table_scan.hpp"
 
+#include <utility>
+
 #include "duckdb/catalog/catalog_entry/table_catalog_entry.hpp"
 #include "duckdb/common/string_util.hpp"
 #include "duckdb/planner/expression/bound_conjunction_expression.hpp"
 #include "duckdb/transaction/transaction.hpp"
-
-#include <utility>
 
 namespace duckdb {
 
@@ -15,9 +15,14 @@ PhysicalTableScan::PhysicalTableScan(vector<LogicalType> types, TableFunction fu
                                      vector<string> names_p, unique_ptr<TableFilterSet> table_filters_p,
                                      idx_t estimated_cardinality, ExtraOperatorInfo extra_info)
     : PhysicalOperator(PhysicalOperatorType::TABLE_SCAN, std::move(types), estimated_cardinality),
-      function(std::move(function_p)), bind_data(std::move(bind_data_p)), returned_types(std::move(returned_types_p)),
-      column_ids(std::move(column_ids_p)), projection_ids(std::move(projection_ids_p)), names(std::move(names_p)),
-      table_filters(std::move(table_filters_p)), extra_info(extra_info) {
+      function(std::move(function_p)),
+      bind_data(std::move(bind_data_p)),
+      returned_types(std::move(returned_types_p)),
+      column_ids(std::move(column_ids_p)),
+      projection_ids(std::move(projection_ids_p)),
+      names(std::move(names_p)),
+      table_filters(std::move(table_filters_p)),
+      extra_info(extra_info) {
 }
 
 class TableScanGlobalSourceState : public GlobalSourceState {
@@ -166,4 +171,4 @@ bool PhysicalTableScan::Equals(const PhysicalOperator &other_p) const {
 	return true;
 }
 
-} // namespace duckdb
+}  // namespace duckdb

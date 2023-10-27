@@ -1,21 +1,21 @@
 #include "duckdb/function/table/table_scan.hpp"
 
 #include "duckdb/catalog/catalog_entry/duck_table_entry.hpp"
+#include "duckdb/catalog/dependency_list.hpp"
 #include "duckdb/common/mutex.hpp"
+#include "duckdb/common/serializer/deserializer.hpp"
+#include "duckdb/common/serializer/serializer.hpp"
+#include "duckdb/function/function_set.hpp"
+#include "duckdb/main/attached_database.hpp"
 #include "duckdb/main/client_config.hpp"
 #include "duckdb/optimizer/matcher/expression_matcher.hpp"
 #include "duckdb/planner/expression/bound_between_expression.hpp"
 #include "duckdb/planner/expression_iterator.hpp"
 #include "duckdb/planner/operator/logical_get.hpp"
 #include "duckdb/storage/data_table.hpp"
-#include "duckdb/transaction/local_storage.hpp"
-#include "duckdb/transaction/duck_transaction.hpp"
-#include "duckdb/main/attached_database.hpp"
-#include "duckdb/catalog/dependency_list.hpp"
-#include "duckdb/function/function_set.hpp"
 #include "duckdb/storage/table/scan_state.hpp"
-#include "duckdb/common/serializer/serializer.hpp"
-#include "duckdb/common/serializer/deserializer.hpp"
+#include "duckdb/transaction/duck_transaction.hpp"
+#include "duckdb/transaction/local_storage.hpp"
 
 namespace duckdb {
 
@@ -30,6 +30,8 @@ struct TableScanLocalState : public LocalTableFunctionState {
 	TableScanState scan_state;
 	//! The DataChunk containing all read columns (even filter columns that are immediately removed)
 	DataChunk all_columns;
+	//! Spike Timing for table scan
+	SpikeProfiler spike_profiler;
 };
 
 static storage_t GetStorageIndex(TableCatalogEntry &table, column_t column_id) {
@@ -81,7 +83,6 @@ static unique_ptr<LocalTableFunctionState> TableScanInitLocal(ExecutionContext &
 }
 
 unique_ptr<GlobalTableFunctionState> TableScanInitGlobal(ClientContext &context, TableFunctionInitInput &input) {
-
 	D_ASSERT(input.bind_data);
 	auto &bind_data = input.bind_data->Cast<TableScanBindData>();
 	auto result = make_uniq<TableScanGlobalState>(context, input.bind_data.get());
@@ -111,6 +112,8 @@ static unique_ptr<BaseStatistics> TableScanStatistics(ClientContext &context, co
 	return bind_data.table.GetStatistics(context, column_id);
 }
 
+string TableScanToString(const FunctionData *bind_data_p);
+
 static void TableScanFunc(ClientContext &context, TableFunctionInput &data_p, DataChunk &output) {
 	auto &bind_data = data_p.bind_data->Cast<TableScanBindData>();
 	auto &gstate = data_p.global_state->Cast<TableScanGlobalState>();
@@ -126,13 +129,19 @@ static void TableScanFunc(ClientContext &context, TableFunctionInput &data_p, Da
 			storage.Scan(transaction, state.all_columns, state.scan_state);
 			output.ReferenceColumns(state.all_columns, gstate.projection_ids);
 		} else {
+			state.spike_profiler.StartTiming("[TableScan - " + TableScanToString(&bind_data) + " - Scan]");
 			storage.Scan(transaction, output, state.scan_state);
+			state.spike_profiler.EndTiming("[TableScan - " + TableScanToString(&bind_data) + " - Scan]");
 		}
 		if (output.size() > 0) {
 			return;
 		}
-		if (!TableScanParallelStateNext(context, data_p.bind_data.get(), data_p.local_state.get(),
-		                                data_p.global_state.get())) {
+
+		state.spike_profiler.StartTiming("[TableScan - " + TableScanToString(&bind_data) + " - Mutex]");
+		bool ret = TableScanParallelStateNext(context, data_p.bind_data.get(), data_p.local_state.get(),
+		                                      data_p.global_state.get());
+		state.spike_profiler.EndTiming("[TableScan - " + TableScanToString(&bind_data) + " - Mutex]");
+		if (!ret) {
 			return;
 		}
 	} while (true);
@@ -216,7 +225,7 @@ static unique_ptr<GlobalTableFunctionState> IndexScanInitGlobal(ClientContext &c
 	auto &bind_data = input.bind_data->Cast<TableScanBindData>();
 	data_ptr_t row_id_data = nullptr;
 	if (!bind_data.result_ids.empty()) {
-		row_id_data = (data_ptr_t)&bind_data.result_ids[0]; // NOLINT - this is not pretty
+		row_id_data = (data_ptr_t)&bind_data.result_ids[0];  // NOLINT - this is not pretty
 	}
 	auto result = make_uniq<IndexScanGlobalState>(row_id_data);
 	auto &local_storage = LocalStorage::Get(context, bind_data.table.catalog);
@@ -502,4 +511,4 @@ void BuiltinFunctions::RegisterTableScanFunctions() {
 	TableScanFunction::RegisterFunction(*this);
 }
 
-} // namespace duckdb
+}  // namespace duckdb

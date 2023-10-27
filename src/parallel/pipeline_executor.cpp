@@ -1,10 +1,11 @@
 #include "duckdb/parallel/pipeline_executor.hpp"
-#include "duckdb/main/client_context.hpp"
+
 #include "duckdb/common/limits.hpp"
+#include "duckdb/main/client_context.hpp"
 
 #ifdef DUCKDB_DEBUG_ASYNC_SINK_SOURCE
-#include <thread>
 #include <chrono>
+#include <thread>
 #endif
 
 namespace duckdb {
@@ -178,9 +179,9 @@ PipelineExecuteResult PipelineExecutor::Execute() {
 	return Execute(NumericLimits<idx_t>::Maximum());
 }
 
-OperatorResultType PipelineExecutor::ExecutePush(DataChunk &input) { // LCOV_EXCL_START
+OperatorResultType PipelineExecutor::ExecutePush(DataChunk &input) {  // LCOV_EXCL_START
 	return ExecutePushInternal(input);
-} // LCOV_EXCL_STOP
+}  // LCOV_EXCL_STOP
 
 void PipelineExecutor::FinishProcessing(int32_t operator_idx) {
 	finished_processing_idx = operator_idx < 0 ? NumericLimits<int32_t>::Maximum() : operator_idx;
@@ -193,9 +194,9 @@ bool PipelineExecutor::IsFinished() {
 
 OperatorResultType PipelineExecutor::ExecutePushInternal(DataChunk &input, idx_t initial_idx) {
 	D_ASSERT(pipeline.sink);
-	if (input.size() == 0) { // LCOV_EXCL_START
+	if (input.size() == 0) {  // LCOV_EXCL_START
 		return OperatorResultType::NEED_MORE_INPUT;
-	} // LCOV_EXCL_STOP
+	}  // LCOV_EXCL_STOP
 
 	// this loop will continuously push the input chunk through the pipeline as long as:
 	// - the OperatorResultType for the Execute is HAVE_MORE_OUTPUT
@@ -321,7 +322,7 @@ void PipelineExecutor::ExecutePull(DataChunk &result) {
 				}
 			}
 		}
-	} catch (const Exception &ex) { // LCOV_EXCL_START
+	} catch (const Exception &ex) {  // LCOV_EXCL_START
 		if (executor.HasError()) {
 			executor.ThrowException();
 		}
@@ -336,7 +337,7 @@ void PipelineExecutor::ExecutePull(DataChunk &result) {
 			executor.ThrowException();
 		}
 		throw;
-	} // LCOV_EXCL_STOP
+	}  // LCOV_EXCL_STOP
 }
 
 void PipelineExecutor::PullFinalize() {
@@ -361,9 +362,9 @@ void PipelineExecutor::GoToSource(idx_t &current_idx, idx_t initial_idx) {
 }
 
 OperatorResultType PipelineExecutor::Execute(DataChunk &input, DataChunk &result, idx_t initial_idx) {
-	if (input.size() == 0) { // LCOV_EXCL_START
+	if (input.size() == 0) {  // LCOV_EXCL_START
 		return OperatorResultType::NEED_MORE_INPUT;
-	} // LCOV_EXCL_STOP
+	}  // LCOV_EXCL_STOP
 	D_ASSERT(!pipeline.operators.empty());
 
 	idx_t current_idx;
@@ -540,4 +541,4 @@ void PipelineExecutor::EndOperator(PhysicalOperator &op, optional_ptr<DataChunk>
 	}
 }
 
-} // namespace duckdb
+}  // namespace duckdb

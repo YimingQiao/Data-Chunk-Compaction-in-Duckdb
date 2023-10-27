@@ -20,6 +20,9 @@ public:
 
 	//! The operator profiler for the individual thread context
 	OperatorProfiler profiler;
+
+	//! yiqiao: the query profiler for the individual thread context
+	SpikeProfiler spike_profiler;
 };
 
-} // namespace duckdb
+}  // namespace duckdb

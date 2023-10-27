@@ -1,25 +1,26 @@
 #include "duckdb/storage/table/row_group.hpp"
-#include "duckdb/common/types/vector.hpp"
-#include "duckdb/common/exception.hpp"
-#include "duckdb/storage/table/column_data.hpp"
-#include "duckdb/storage/table/column_checkpoint_state.hpp"
-#include "duckdb/storage/table/update_segment.hpp"
-#include "duckdb/storage/table_storage_info.hpp"
+
 #include "duckdb/common/chrono.hpp"
-#include "duckdb/planner/table_filter.hpp"
+#include "duckdb/common/exception.hpp"
+#include "duckdb/common/serializer/binary_serializer.hpp"
+#include "duckdb/common/serializer/deserializer.hpp"
+#include "duckdb/common/serializer/serializer.hpp"
+#include "duckdb/common/types/vector.hpp"
 #include "duckdb/execution/expression_executor.hpp"
+#include "duckdb/main/attached_database.hpp"
+#include "duckdb/main/database.hpp"
+#include "duckdb/planner/table_filter.hpp"
 #include "duckdb/storage/checkpoint/table_data_writer.hpp"
 #include "duckdb/storage/metadata/metadata_reader.hpp"
-#include "duckdb/transaction/duck_transaction_manager.hpp"
-#include "duckdb/main/database.hpp"
-#include "duckdb/main/attached_database.hpp"
-#include "duckdb/transaction/duck_transaction.hpp"
 #include "duckdb/storage/table/append_state.hpp"
-#include "duckdb/storage/table/scan_state.hpp"
+#include "duckdb/storage/table/column_checkpoint_state.hpp"
+#include "duckdb/storage/table/column_data.hpp"
 #include "duckdb/storage/table/row_version_manager.hpp"
-#include "duckdb/common/serializer/serializer.hpp"
-#include "duckdb/common/serializer/deserializer.hpp"
-#include "duckdb/common/serializer/binary_serializer.hpp"
+#include "duckdb/storage/table/scan_state.hpp"
+#include "duckdb/storage/table/update_segment.hpp"
+#include "duckdb/storage/table_storage_info.hpp"
+#include "duckdb/transaction/duck_transaction.hpp"
+#include "duckdb/transaction/duck_transaction_manager.hpp"
 
 namespace duckdb {
 
@@ -102,9 +103,10 @@ ColumnData &RowGroup::GetColumn(storage_t c) {
 	    ColumnData::Deserialize(GetBlockManager(), GetTableInfo(), c, start, column_data_reader, types[c], nullptr);
 	is_loaded[c] = true;
 	if (this->columns[c]->count != this->count) {
-		throw InternalException("Corrupted database - loaded column with index %llu at row start %llu, count %llu did "
-		                        "not match count of row group %llu",
-		                        c, start, this->columns[c]->count, this->count.load());
+		throw InternalException(
+		    "Corrupted database - loaded column with index %llu at row start %llu, count %llu did "
+		    "not match count of row group %llu",
+		    c, start, this->columns[c]->count, this->count.load());
 	}
 	return *columns[c];
 }
@@ -534,17 +536,17 @@ void RowGroup::ScanCommitted(CollectionScanState &state, DataChunk &result, Tabl
 	auto lowest_active_id = transaction_manager.LowestActiveId();
 	TransactionData data(lowest_active_id, lowest_active_start);
 	switch (type) {
-	case TableScanType::TABLE_SCAN_COMMITTED_ROWS:
-		TemplatedScan<TableScanType::TABLE_SCAN_COMMITTED_ROWS>(data, state, result);
-		break;
-	case TableScanType::TABLE_SCAN_COMMITTED_ROWS_DISALLOW_UPDATES:
-		TemplatedScan<TableScanType::TABLE_SCAN_COMMITTED_ROWS_DISALLOW_UPDATES>(data, state, result);
-		break;
-	case TableScanType::TABLE_SCAN_COMMITTED_ROWS_OMIT_PERMANENTLY_DELETED:
-		TemplatedScan<TableScanType::TABLE_SCAN_COMMITTED_ROWS_OMIT_PERMANENTLY_DELETED>(data, state, result);
-		break;
-	default:
-		throw InternalException("Unrecognized table scan type");
+		case TableScanType::TABLE_SCAN_COMMITTED_ROWS:
+			TemplatedScan<TableScanType::TABLE_SCAN_COMMITTED_ROWS>(data, state, result);
+			break;
+		case TableScanType::TABLE_SCAN_COMMITTED_ROWS_DISALLOW_UPDATES:
+			TemplatedScan<TableScanType::TABLE_SCAN_COMMITTED_ROWS_DISALLOW_UPDATES>(data, state, result);
+			break;
+		case TableScanType::TABLE_SCAN_COMMITTED_ROWS_OMIT_PERMANENTLY_DELETED:
+			TemplatedScan<TableScanType::TABLE_SCAN_COMMITTED_ROWS_OMIT_PERMANENTLY_DELETED>(data, state, result);
+			break;
+		default:
+			throw InternalException("Unrecognized table scan type");
 	}
 }
 
@@ -784,9 +786,10 @@ RowGroupPointer RowGroup::Checkpoint(RowGroupWriter &writer, TableStatistics &gl
 	for (idx_t column_idx = 0; column_idx < GetColumnCount(); column_idx++) {
 		auto &column = GetColumn(column_idx);
 		if (column.count != this->count) {
-			throw InternalException("Corrupted in-memory column - column with index %llu has misaligned count (row "
-			                        "group has %llu rows, column has %llu)",
-			                        column_idx, this->count.load(), column.count);
+			throw InternalException(
+			    "Corrupted in-memory column - column with index %llu has misaligned count (row "
+			    "group has %llu rows, column has %llu)",
+			    column_idx, this->count.load(), column.count);
 		}
 		compression_types.push_back(writer.GetColumnCompressionType(column_idx));
 	}
@@ -867,8 +870,13 @@ void RowGroup::GetColumnSegmentInfo(idx_t row_group_index, vector<ColumnSegmentI
 class VersionDeleteState {
 public:
 	VersionDeleteState(RowGroup &info, TransactionData transaction, DataTable &table, idx_t base_row)
-	    : info(info), transaction(transaction), table(table), current_chunk(DConstants::INVALID_INDEX), count(0),
-	      base_row(base_row), delete_count(0) {
+	    : info(info),
+	      transaction(transaction),
+	      table(table),
+	      current_chunk(DConstants::INVALID_INDEX),
+	      count(0),
+	      base_row(base_row),
+	      delete_count(0) {
 	}
 
 	RowGroup &info;
@@ -941,4 +949,4 @@ void VersionDeleteState::Flush() {
 	count = 0;
 }
 
-} // namespace duckdb
+}  // namespace duckdb
