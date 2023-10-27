@@ -107,49 +107,49 @@ void TupleDataCollection::ComputeHeapSizes(Vector &heap_sizes_v, const Vector &s
 	const auto &source_validity = source_vector_data.validity;
 
 	switch (type) {
-	case PhysicalType::VARCHAR: {
-		// Only non-inlined strings are stored in the heap
-		const auto source_data = UnifiedVectorFormat::GetData<string_t>(source_vector_data);
-		for (idx_t i = 0; i < append_count; i++) {
-			const auto source_idx = source_sel.get_index(append_sel.get_index(i));
-			if (source_validity.RowIsValid(source_idx)) {
-				heap_sizes[i] += StringHeapSize(source_data[source_idx]);
-			} else {
-				heap_sizes[i] += StringHeapSize(NullValue<string_t>());
+		case PhysicalType::VARCHAR: {
+			// Only non-inlined strings are stored in the heap
+			const auto source_data = UnifiedVectorFormat::GetData<string_t>(source_vector_data);
+			for (idx_t i = 0; i < append_count; i++) {
+				const auto source_idx = source_sel.get_index(append_sel.get_index(i));
+				if (source_validity.RowIsValid(source_idx)) {
+					heap_sizes[i] += StringHeapSize(source_data[source_idx]);
+				} else {
+					heap_sizes[i] += StringHeapSize(NullValue<string_t>());
+				}
 			}
+			break;
 		}
-		break;
-	}
-	case PhysicalType::STRUCT: {
-		// Recurse through the struct children
-		auto &struct_sources = StructVector::GetEntries(source_v);
-		for (idx_t struct_col_idx = 0; struct_col_idx < struct_sources.size(); struct_col_idx++) {
-			const auto &struct_source = struct_sources[struct_col_idx];
-			auto &struct_format = source_format.children[struct_col_idx];
-			TupleDataCollection::ComputeHeapSizes(heap_sizes_v, *struct_source, struct_format, append_sel,
-			                                      append_count);
-		}
-		break;
-	}
-	case PhysicalType::LIST: {
-		// Lists are stored entirely in the heap
-		for (idx_t i = 0; i < append_count; i++) {
-			auto source_idx = source_sel.get_index(append_sel.get_index(i));
-			if (source_validity.RowIsValid(source_idx)) {
-				heap_sizes[i] += sizeof(uint64_t); // Size of the list
+		case PhysicalType::STRUCT: {
+			// Recurse through the struct children
+			auto &struct_sources = StructVector::GetEntries(source_v);
+			for (idx_t struct_col_idx = 0; struct_col_idx < struct_sources.size(); struct_col_idx++) {
+				const auto &struct_source = struct_sources[struct_col_idx];
+				auto &struct_format = source_format.children[struct_col_idx];
+				TupleDataCollection::ComputeHeapSizes(heap_sizes_v, *struct_source, struct_format, append_sel,
+				                                      append_count);
 			}
+			break;
 		}
+		case PhysicalType::LIST: {
+			// Lists are stored entirely in the heap
+			for (idx_t i = 0; i < append_count; i++) {
+				auto source_idx = source_sel.get_index(append_sel.get_index(i));
+				if (source_validity.RowIsValid(source_idx)) {
+					heap_sizes[i] += sizeof(uint64_t);  // Size of the list
+				}
+			}
 
-		// Recurse
-		D_ASSERT(source_format.children.size() == 1);
-		auto &child_source_v = ListVector::GetEntry(source_v);
-		auto &child_format = source_format.children[0];
-		TupleDataCollection::WithinListHeapComputeSizes(heap_sizes_v, child_source_v, child_format, append_sel,
-		                                                append_count, source_vector_data);
-		break;
-	}
-	default:
-		throw NotImplementedException("ComputeHeapSizes for %s", EnumUtil::ToString(source_v.GetType().id()));
+			// Recurse
+			D_ASSERT(source_format.children.size() == 1);
+			auto &child_source_v = ListVector::GetEntry(source_v);
+			auto &child_format = source_format.children[0];
+			TupleDataCollection::WithinListHeapComputeSizes(heap_sizes_v, child_source_v, child_format, append_sel,
+			                                                append_count, source_vector_data);
+			break;
+		}
+		default:
+			throw NotImplementedException("ComputeHeapSizes for %s", EnumUtil::ToString(source_v.GetType().id()));
 	}
 }
 
@@ -165,20 +165,21 @@ void TupleDataCollection::WithinListHeapComputeSizes(Vector &heap_sizes_v, const
 	}
 
 	switch (type) {
-	case PhysicalType::VARCHAR:
-		TupleDataCollection::StringWithinListComputeHeapSizes(heap_sizes_v, source_v, source_format, append_sel,
-		                                                      append_count, list_data);
-		break;
-	case PhysicalType::STRUCT:
-		TupleDataCollection::StructWithinListComputeHeapSizes(heap_sizes_v, source_v, source_format, append_sel,
-		                                                      append_count, list_data);
-		break;
-	case PhysicalType::LIST:
-		TupleDataCollection::ListWithinListComputeHeapSizes(heap_sizes_v, source_v, source_format, append_sel,
-		                                                    append_count, list_data);
-		break;
-	default:
-		throw NotImplementedException("WithinListHeapComputeSizes for %s", EnumUtil::ToString(source_v.GetType().id()));
+		case PhysicalType::VARCHAR:
+			TupleDataCollection::StringWithinListComputeHeapSizes(heap_sizes_v, source_v, source_format, append_sel,
+			                                                      append_count, list_data);
+			break;
+		case PhysicalType::STRUCT:
+			TupleDataCollection::StructWithinListComputeHeapSizes(heap_sizes_v, source_v, source_format, append_sel,
+			                                                      append_count, list_data);
+			break;
+		case PhysicalType::LIST:
+			TupleDataCollection::ListWithinListComputeHeapSizes(heap_sizes_v, source_v, source_format, append_sel,
+			                                                    append_count, list_data);
+			break;
+		default:
+			throw NotImplementedException("WithinListHeapComputeSizes for %s",
+			                              EnumUtil::ToString(source_v.GetType().id()));
 	}
 }
 
@@ -199,7 +200,7 @@ void TupleDataCollection::ComputeFixedWithinListHeapSizes(Vector &heap_sizes_v, 
 	for (idx_t i = 0; i < append_count; i++) {
 		const auto list_idx = list_sel.get_index(append_sel.get_index(i));
 		if (!list_validity.RowIsValid(list_idx)) {
-			continue; // Original list entry is invalid - no need to serialize the child
+			continue;  // Original list entry is invalid - no need to serialize the child
 		}
 
 		// Get the current list length
@@ -233,7 +234,7 @@ void TupleDataCollection::StringWithinListComputeHeapSizes(Vector &heap_sizes_v,
 	for (idx_t i = 0; i < append_count; i++) {
 		const auto list_idx = list_sel.get_index(append_sel.get_index(i));
 		if (!list_validity.RowIsValid(list_idx)) {
-			continue; // Original list entry is invalid - no need to serialize the child
+			continue;  // Original list entry is invalid - no need to serialize the child
 		}
 
 		// Get the current list entry
@@ -271,7 +272,7 @@ void TupleDataCollection::StructWithinListComputeHeapSizes(Vector &heap_sizes_v,
 	for (idx_t i = 0; i < append_count; i++) {
 		const auto list_idx = list_sel.get_index(append_sel.get_index(i));
 		if (!list_validity.RowIsValid(list_idx)) {
-			continue; // Original list entry is invalid - no need to serialize the child
+			continue;  // Original list entry is invalid - no need to serialize the child
 		}
 
 		// Get the current list length
@@ -381,7 +382,7 @@ void TupleDataCollection::ListWithinListComputeHeapSizes(Vector &heap_sizes_v, c
 	for (idx_t i = 0; i < append_count; i++) {
 		const auto list_idx = list_sel.get_index(append_sel.get_index(i));
 		if (!list_validity.RowIsValid(list_idx)) {
-			continue; // Original list entry is invalid - no need to serialize the child list
+			continue;  // Original list entry is invalid - no need to serialize the child list
 		}
 
 		// Get the current list entry
@@ -438,11 +439,17 @@ void TupleDataCollection::Scatter(TupleDataChunkState &chunk_state, const DataCh
                                   const SelectionVector &append_sel, const idx_t append_count) const {
 	const auto row_locations = FlatVector::GetData<data_ptr_t>(chunk_state.row_locations);
 
+	// yiqiao: Hash Join Partition Bottleneck
+	Profiler profiler;
+	profiler.Start();
+
 	// Set the validity mask for each row before inserting data
 	const auto validity_bytes = ValidityBytes::SizeInBytes(layout.ColumnCount());
 	for (idx_t i = 0; i < append_count; i++) {
 		FastMemset(row_locations[i], ~0, validity_bytes);
 	}
+
+	BeeProfiler::Get().InsertRecord("{TupleDataCollection::Scatter} memset", profiler.Elapsed());
 
 	if (!layout.AllConstant()) {
 		// Set the heap size for each row
@@ -633,7 +640,7 @@ static void TupleDataTemplatedWithinListScatter(const Vector &source, const Tupl
 	for (idx_t i = 0; i < append_count; i++) {
 		const auto list_idx = list_sel.get_index(append_sel.get_index(i));
 		if (!list_validity.RowIsValid(list_idx)) {
-			continue; // Original list entry is invalid - no need to serialize the child
+			continue;  // Original list entry is invalid - no need to serialize the child
 		}
 
 		// Get the current list entry
@@ -688,7 +695,7 @@ static void TupleDataStructWithinListScatter(const Vector &source, const TupleDa
 	for (idx_t i = 0; i < append_count; i++) {
 		const auto list_idx = list_sel.get_index(append_sel.get_index(i));
 		if (!list_validity.RowIsValid(list_idx)) {
-			continue; // Original list entry is invalid - no need to serialize the child
+			continue;  // Original list entry is invalid - no need to serialize the child
 		}
 
 		// Get the current list entry
@@ -746,7 +753,7 @@ static void TupleDataListWithinListScatter(const Vector &child_list, const Tuple
 	for (idx_t i = 0; i < append_count; i++) {
 		const auto list_idx = list_sel.get_index(append_sel.get_index(i));
 		if (!list_validity.RowIsValid(list_idx)) {
-			continue; // Original list entry is invalid - no need to serialize the child list
+			continue;  // Original list entry is invalid - no need to serialize the child list
 		}
 
 		// Get the current list entry
@@ -793,61 +800,61 @@ tuple_data_scatter_function_t TupleDataGetScatterFunction(bool within_list) {
 TupleDataScatterFunction TupleDataCollection::GetScatterFunction(const LogicalType &type, bool within_list) {
 	TupleDataScatterFunction result;
 	switch (type.InternalType()) {
-	case PhysicalType::BOOL:
-		result.function = TupleDataGetScatterFunction<bool>(within_list);
-		break;
-	case PhysicalType::INT8:
-		result.function = TupleDataGetScatterFunction<int8_t>(within_list);
-		break;
-	case PhysicalType::INT16:
-		result.function = TupleDataGetScatterFunction<int16_t>(within_list);
-		break;
-	case PhysicalType::INT32:
-		result.function = TupleDataGetScatterFunction<int32_t>(within_list);
-		break;
-	case PhysicalType::INT64:
-		result.function = TupleDataGetScatterFunction<int64_t>(within_list);
-		break;
-	case PhysicalType::INT128:
-		result.function = TupleDataGetScatterFunction<hugeint_t>(within_list);
-		break;
-	case PhysicalType::UINT8:
-		result.function = TupleDataGetScatterFunction<uint8_t>(within_list);
-		break;
-	case PhysicalType::UINT16:
-		result.function = TupleDataGetScatterFunction<uint16_t>(within_list);
-		break;
-	case PhysicalType::UINT32:
-		result.function = TupleDataGetScatterFunction<uint32_t>(within_list);
-		break;
-	case PhysicalType::UINT64:
-		result.function = TupleDataGetScatterFunction<uint64_t>(within_list);
-		break;
-	case PhysicalType::FLOAT:
-		result.function = TupleDataGetScatterFunction<float>(within_list);
-		break;
-	case PhysicalType::DOUBLE:
-		result.function = TupleDataGetScatterFunction<double>(within_list);
-		break;
-	case PhysicalType::INTERVAL:
-		result.function = TupleDataGetScatterFunction<interval_t>(within_list);
-		break;
-	case PhysicalType::VARCHAR:
-		result.function = TupleDataGetScatterFunction<string_t>(within_list);
-		break;
-	case PhysicalType::STRUCT: {
-		result.function = within_list ? TupleDataStructWithinListScatter : TupleDataStructScatter;
-		for (const auto &child_type : StructType::GetChildTypes(type)) {
-			result.child_functions.push_back(GetScatterFunction(child_type.second, within_list));
+		case PhysicalType::BOOL:
+			result.function = TupleDataGetScatterFunction<bool>(within_list);
+			break;
+		case PhysicalType::INT8:
+			result.function = TupleDataGetScatterFunction<int8_t>(within_list);
+			break;
+		case PhysicalType::INT16:
+			result.function = TupleDataGetScatterFunction<int16_t>(within_list);
+			break;
+		case PhysicalType::INT32:
+			result.function = TupleDataGetScatterFunction<int32_t>(within_list);
+			break;
+		case PhysicalType::INT64:
+			result.function = TupleDataGetScatterFunction<int64_t>(within_list);
+			break;
+		case PhysicalType::INT128:
+			result.function = TupleDataGetScatterFunction<hugeint_t>(within_list);
+			break;
+		case PhysicalType::UINT8:
+			result.function = TupleDataGetScatterFunction<uint8_t>(within_list);
+			break;
+		case PhysicalType::UINT16:
+			result.function = TupleDataGetScatterFunction<uint16_t>(within_list);
+			break;
+		case PhysicalType::UINT32:
+			result.function = TupleDataGetScatterFunction<uint32_t>(within_list);
+			break;
+		case PhysicalType::UINT64:
+			result.function = TupleDataGetScatterFunction<uint64_t>(within_list);
+			break;
+		case PhysicalType::FLOAT:
+			result.function = TupleDataGetScatterFunction<float>(within_list);
+			break;
+		case PhysicalType::DOUBLE:
+			result.function = TupleDataGetScatterFunction<double>(within_list);
+			break;
+		case PhysicalType::INTERVAL:
+			result.function = TupleDataGetScatterFunction<interval_t>(within_list);
+			break;
+		case PhysicalType::VARCHAR:
+			result.function = TupleDataGetScatterFunction<string_t>(within_list);
+			break;
+		case PhysicalType::STRUCT: {
+			result.function = within_list ? TupleDataStructWithinListScatter : TupleDataStructScatter;
+			for (const auto &child_type : StructType::GetChildTypes(type)) {
+				result.child_functions.push_back(GetScatterFunction(child_type.second, within_list));
+			}
+			break;
 		}
-		break;
-	}
-	case PhysicalType::LIST:
-		result.function = within_list ? TupleDataListWithinListScatter : TupleDataListScatter;
-		result.child_functions.emplace_back(GetScatterFunction(ListType::GetChildType(type), true));
-		break;
-	default:
-		throw InternalException("Unsupported type for TupleDataCollection::GetScatterFunction");
+		case PhysicalType::LIST:
+			result.function = within_list ? TupleDataListWithinListScatter : TupleDataListScatter;
+			result.child_functions.emplace_back(GetScatterFunction(ListType::GetChildType(type), true));
+			break;
+		default:
+			throw InternalException("Unsupported type for TupleDataCollection::GetScatterFunction");
 	}
 	return result;
 }
@@ -1188,63 +1195,63 @@ tuple_data_gather_function_t TupleDataGetGatherFunction(bool within_list) {
 TupleDataGatherFunction TupleDataCollection::GetGatherFunction(const LogicalType &type, bool within_list) {
 	TupleDataGatherFunction result;
 	switch (type.InternalType()) {
-	case PhysicalType::BOOL:
-		result.function = TupleDataGetGatherFunction<bool>(within_list);
-		break;
-	case PhysicalType::INT8:
-		result.function = TupleDataGetGatherFunction<int8_t>(within_list);
-		break;
-	case PhysicalType::INT16:
-		result.function = TupleDataGetGatherFunction<int16_t>(within_list);
-		break;
-	case PhysicalType::INT32:
-		result.function = TupleDataGetGatherFunction<int32_t>(within_list);
-		break;
-	case PhysicalType::INT64:
-		result.function = TupleDataGetGatherFunction<int64_t>(within_list);
-		break;
-	case PhysicalType::INT128:
-		result.function = TupleDataGetGatherFunction<hugeint_t>(within_list);
-		break;
-	case PhysicalType::UINT8:
-		result.function = TupleDataGetGatherFunction<uint8_t>(within_list);
-		break;
-	case PhysicalType::UINT16:
-		result.function = TupleDataGetGatherFunction<uint16_t>(within_list);
-		break;
-	case PhysicalType::UINT32:
-		result.function = TupleDataGetGatherFunction<uint32_t>(within_list);
-		break;
-	case PhysicalType::UINT64:
-		result.function = TupleDataGetGatherFunction<uint64_t>(within_list);
-		break;
-	case PhysicalType::FLOAT:
-		result.function = TupleDataGetGatherFunction<float>(within_list);
-		break;
-	case PhysicalType::DOUBLE:
-		result.function = TupleDataGetGatherFunction<double>(within_list);
-		break;
-	case PhysicalType::INTERVAL:
-		result.function = TupleDataGetGatherFunction<interval_t>(within_list);
-		break;
-	case PhysicalType::VARCHAR:
-		result.function = TupleDataGetGatherFunction<string_t>(within_list);
-		break;
-	case PhysicalType::STRUCT: {
-		result.function = within_list ? TupleDataStructWithinListGather : TupleDataStructGather;
-		for (const auto &child_type : StructType::GetChildTypes(type)) {
-			result.child_functions.push_back(GetGatherFunction(child_type.second, within_list));
+		case PhysicalType::BOOL:
+			result.function = TupleDataGetGatherFunction<bool>(within_list);
+			break;
+		case PhysicalType::INT8:
+			result.function = TupleDataGetGatherFunction<int8_t>(within_list);
+			break;
+		case PhysicalType::INT16:
+			result.function = TupleDataGetGatherFunction<int16_t>(within_list);
+			break;
+		case PhysicalType::INT32:
+			result.function = TupleDataGetGatherFunction<int32_t>(within_list);
+			break;
+		case PhysicalType::INT64:
+			result.function = TupleDataGetGatherFunction<int64_t>(within_list);
+			break;
+		case PhysicalType::INT128:
+			result.function = TupleDataGetGatherFunction<hugeint_t>(within_list);
+			break;
+		case PhysicalType::UINT8:
+			result.function = TupleDataGetGatherFunction<uint8_t>(within_list);
+			break;
+		case PhysicalType::UINT16:
+			result.function = TupleDataGetGatherFunction<uint16_t>(within_list);
+			break;
+		case PhysicalType::UINT32:
+			result.function = TupleDataGetGatherFunction<uint32_t>(within_list);
+			break;
+		case PhysicalType::UINT64:
+			result.function = TupleDataGetGatherFunction<uint64_t>(within_list);
+			break;
+		case PhysicalType::FLOAT:
+			result.function = TupleDataGetGatherFunction<float>(within_list);
+			break;
+		case PhysicalType::DOUBLE:
+			result.function = TupleDataGetGatherFunction<double>(within_list);
+			break;
+		case PhysicalType::INTERVAL:
+			result.function = TupleDataGetGatherFunction<interval_t>(within_list);
+			break;
+		case PhysicalType::VARCHAR:
+			result.function = TupleDataGetGatherFunction<string_t>(within_list);
+			break;
+		case PhysicalType::STRUCT: {
+			result.function = within_list ? TupleDataStructWithinListGather : TupleDataStructGather;
+			for (const auto &child_type : StructType::GetChildTypes(type)) {
+				result.child_functions.push_back(GetGatherFunction(child_type.second, within_list));
+			}
+			break;
 		}
-		break;
-	}
-	case PhysicalType::LIST:
-		result.function = within_list ? TupleDataListWithinListGather : TupleDataListGather;
-		result.child_functions.push_back(GetGatherFunction(ListType::GetChildType(type), true));
-		break;
-	default:
-		throw InternalException("Unsupported type for TupleDataCollection::GetGatherFunction");
+		case PhysicalType::LIST:
+			result.function = within_list ? TupleDataListWithinListGather : TupleDataListGather;
+			result.child_functions.push_back(GetGatherFunction(ListType::GetChildType(type), true));
+			break;
+		default:
+			throw InternalException("Unsupported type for TupleDataCollection::GetGatherFunction");
 	}
 	return result;
 }
 
-} // namespace duckdb
+}  // namespace duckdb

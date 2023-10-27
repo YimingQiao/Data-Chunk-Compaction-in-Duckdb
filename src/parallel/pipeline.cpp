@@ -147,16 +147,17 @@ bool Pipeline::ScheduleParallel(shared_ptr<Event> &event) {
 		string table_name = scan->function.to_string(scan->bind_data.get());
 
 		if (table_name == "room")
-			max_threads = 48;
+			max_threads = 2;
 		else
-			max_threads = 1;
+			max_threads = 2;
+	}
+
+	// Hash Table Probing for left deep tree
+	if (source->GetName() == "SEQ_SCAN " && sink->GetName() == "EXPLAIN_ANALYZE" && !operators.empty()) {
+		max_threads = 64;
 	}
 
 	if (source->GetName() == "BREAKER") {
-		max_threads = kMultiThread;
-	}
-
-	if (source->GetName() == "SEQ_SCAN " && sink->GetName() != "HASH_JOIN") {
 		max_threads = kMultiThread;
 	}
 

@@ -8,7 +8,11 @@ namespace duckdb {
 
 PartitionedTupleData::PartitionedTupleData(PartitionedTupleDataType type_p, BufferManager &buffer_manager_p,
                                            const TupleDataLayout &layout_p)
-    : type(type_p), buffer_manager(buffer_manager_p), layout(layout_p.Copy()), count(0), data_size(0),
+    : type(type_p),
+      buffer_manager(buffer_manager_p),
+      layout(layout_p.Copy()),
+      count(0),
+      data_size(0),
       allocators(make_shared<PartitionTupleDataAllocators>()) {
 }
 
@@ -88,8 +92,13 @@ void PartitionedTupleData::AppendUnified(PartitionedTupleDataAppendState &state,
 		// Build the buffer space
 		BuildBufferSpace(state);
 
+		Profiler profiler;
+		profiler.Start();
+
 		// Now scatter everything in one go
 		partitions[0]->Scatter(state.chunk_state, input, state.partition_sel, actual_append_count);
+
+		BeeProfiler::Get().InsertRecord("{PartitionedTupleData::AppendUnified} scatter", profiler.Elapsed());
 	}
 
 	count += actual_append_count;
@@ -199,23 +208,23 @@ void PartitionedTupleData::BuildPartitionSel(PartitionedTupleDataAppendState &st
 	partition_entries.clear();
 
 	switch (state.partition_indices.GetVectorType()) {
-	case VectorType::FLAT_VECTOR:
-		for (idx_t i = 0; i < append_count; i++) {
-			const auto index = append_sel.get_index(i);
-			const auto &partition_index = partition_indices[index];
-			auto partition_entry = partition_entries.find(partition_index);
-			if (partition_entry == partition_entries.end()) {
-				partition_entries[partition_index] = list_entry_t(0, 1);
-			} else {
-				GETTER::GetValue(partition_entry).length++;
+		case VectorType::FLAT_VECTOR:
+			for (idx_t i = 0; i < append_count; i++) {
+				const auto index = append_sel.get_index(i);
+				const auto &partition_index = partition_indices[index];
+				auto partition_entry = partition_entries.find(partition_index);
+				if (partition_entry == partition_entries.end()) {
+					partition_entries[partition_index] = list_entry_t(0, 1);
+				} else {
+					GETTER::GetValue(partition_entry).length++;
+				}
 			}
-		}
-		break;
-	case VectorType::CONSTANT_VECTOR:
-		partition_entries[partition_indices[0]] = list_entry_t(0, append_count);
-		break;
-	default:
-		throw InternalException("Unexpected VectorType in PartitionedTupleData::Append");
+			break;
+		case VectorType::CONSTANT_VECTOR:
+			partition_entries[partition_indices[0]] = list_entry_t(0, append_count);
+			break;
+		default:
+			throw InternalException("Unexpected VectorType in PartitionedTupleData::Append");
 	}
 
 	// Early out: check if everything belongs to a single partition
@@ -433,4 +442,4 @@ void PartitionedTupleData::CreateAllocator() {
 	allocators->allocators.emplace_back(make_shared<TupleDataAllocator>(buffer_manager, layout));
 }
 
-} // namespace duckdb
+}  // namespace duckdb
