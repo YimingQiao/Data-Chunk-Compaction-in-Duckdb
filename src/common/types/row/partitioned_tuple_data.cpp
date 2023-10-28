@@ -92,13 +92,8 @@ void PartitionedTupleData::AppendUnified(PartitionedTupleDataAppendState &state,
 		// Build the buffer space
 		BuildBufferSpace(state);
 
-		Profiler profiler;
-		profiler.Start();
-
 		// Now scatter everything in one go
 		partitions[0]->Scatter(state.chunk_state, input, state.partition_sel, actual_append_count);
-
-		BeeProfiler::Get().InsertRecord("{PartitionedTupleData::AppendUnified} scatter", profiler.Elapsed());
 	}
 
 	count += actual_append_count;

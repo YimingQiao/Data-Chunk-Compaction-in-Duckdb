@@ -110,44 +110,44 @@ int main() {
 	{ con.Query("SET threads TO 126;"); }
 
 	// SEQ join query
-	{
-		std::string seq_sql_join =
-		    "EXPLAIN ANALYZE "
-		    "SELECT student.stu_id, department.name, room.type, type.info FROM student, department, room, type "
-		    "WHERE student.stu_id = room.stu_id AND student.major_id = department.major_id "
-		    "AND room.type = type.type;";
-		auto result = con.Query(seq_sql_join);
-		if (!result->HasError()) {
-			std::string plan = result->GetValue(1, 0).ToString();
-			std::cerr << plan << "\n";
-			// std::cerr << result->ToString() << "\n";
-		} else {
-			std::cerr << result->GetError() << "\n";
-		}
-	}
+	//	{
+	//		std::string seq_sql_join =
+	//		    "EXPLAIN ANALYZE "
+	//		    "SELECT student.stu_id, department.name, room.type, type.info FROM student, department, room, type "
+	//		    "WHERE student.stu_id = room.stu_id AND student.major_id = department.major_id "
+	//		    "AND room.type = type.type;";
+	//		auto result = con.Query(seq_sql_join);
+	//		if (!result->HasError()) {
+	//			std::string plan = result->GetValue(1, 0).ToString();
+	//			std::cerr << plan << "\n";
+	//			// std::cerr << result->ToString() << "\n";
+	//		} else {
+	//			std::cerr << result->GetError() << "\n";
+	//		}
+	//	}
 
 	// BUSHY join query
-	//		{
-	//			std::string bushy_sql_join =
-	//			    "EXPLAIN ANALYZE "
-	//			    "SELECT t2.stu_id, t2.name, t1.type, t1.info "
-	//			    "FROM "
-	//			    "(SELECT room.stu_id, room.type, type.info "
-	//			    " FROM room INNER JOIN type ON room.type = type.type) AS t1,"
-	//			    "(SELECT student.stu_id, department.name "
-	//			    " FROM student, department WHERE student.major_id = department.major_id) AS t2,"
-	//			    "WHERE t1.stu_id = t2.stu_id;";
-	//			for (size_t i = 0; i < 1; ++i) {
-	//				auto result = con.Query(bushy_sql_join);
-	//				if (!result->HasError()) {
-	//					std::string plan = result->GetValue(1, 0).ToString();
-	//					std::cerr << plan << "\n";
-	//					// std::cerr << result->ToString() << "\n";
-	//				} else {
-	//					std::cerr << result->GetError() << "\n";
-	//				}
-	//			}
-	//		}
+	{
+		std::string bushy_sql_join =
+		    "EXPLAIN ANALYZE "
+		    "SELECT t2.stu_id, t2.name, t1.type, t1.info "
+		    "FROM "
+		    "(SELECT room.stu_id, room.type, type.info "
+		    " FROM room INNER JOIN type ON room.type = type.type) AS t1,"
+		    "(SELECT student.stu_id, department.name "
+		    " FROM student, department WHERE student.major_id = department.major_id) AS t2,"
+		    "WHERE t1.stu_id = t2.stu_id;";
+		for (size_t i = 0; i < 1; ++i) {
+			auto result = con.Query(bushy_sql_join);
+			if (!result->HasError()) {
+				std::string plan = result->GetValue(1, 0).ToString();
+				std::cerr << plan << "\n";
+				// std::cerr << result->ToString() << "\n";
+			} else {
+				std::cerr << result->GetError() << "\n";
+			}
+		}
+	}
 
 	// Left-deep join Bushy
 	//	{

@@ -135,39 +135,32 @@ bool Pipeline::ScheduleParallel(shared_ptr<Event> &event) {
 
 	// idx_t max_threads = source_state->MaxThreads();
 	idx_t max_threads = 1;
-	idx_t kMultiThread = 1;
-
-	//	if (sink->GetName() == "BREAKER") {
-	//		max_threads = kMultiThread;
-	//	}
+	idx_t kMultiThread = 32;
 
 	// Hash Table Partition
 	if (source->GetName() == "SEQ_SCAN " && sink->GetName() == "HASH_JOIN" && operators.empty()) {
 		auto *scan = (PhysicalTableScan *)source.get();
 		string table_name = scan->function.to_string(scan->bind_data.get());
 
-		if (table_name == "room")
-			max_threads = 2;
-		else
-			max_threads = 2;
+		max_threads = 4;
 	}
 
 	// Hash Table Probing for left deep tree
 	if (source->GetName() == "SEQ_SCAN " && sink->GetName() == "EXPLAIN_ANALYZE" && !operators.empty()) {
-		max_threads = 64;
+		max_threads = 4;
 	}
 
 	if (source->GetName() == "BREAKER") {
-		max_threads = kMultiThread;
+		max_threads = 32;
 	}
 
 	if (source->GetName() == "SEQ_SCAN " && sink->GetName() == "BREAKER") {
-		max_threads = kMultiThread;
+		max_threads = 4;
 	}
 
 	// Hash Table Probing for Next Hash Table Building
 	if (source->GetName() == "SEQ_SCAN " && sink->GetName() == "HASH_JOIN" && !operators.empty()) {
-		max_threads = kMultiThread;
+		max_threads = 4;
 	}
 
 	size_t active_threads = TaskScheduler::GetScheduler(executor.context).NumberOfThreads();

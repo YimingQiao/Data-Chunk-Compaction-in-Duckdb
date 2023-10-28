@@ -33,21 +33,16 @@ public:
 
 	unique_ptr<ColumnDataCollection> intermediate_table;
 	ColumnDataAppendState append_state;
-	//	idx_t sink_times = 0;
-	//	int64_t sink_time_us = 0;
 };
 
-duckdb::SinkResultType duckdb::PhysicalPipelineBreaker::Sink(duckdb::ExecutionContext &context,
-                                                             duckdb::DataChunk &chunk,
+duckdb::SinkResultType PhysicalPipelineBreaker::Sink(duckdb::ExecutionContext &context, duckdb::DataChunk &chunk,
                                                              duckdb::OperatorSinkInput &input) const {
 	auto &lstate = input.local_state.Cast<PipelineBreakerLocalState>();
 
-	// auto start_time = std::chrono::high_resolution_clock::now();
+	Profiler profiler;
+	profiler.Start();
 	{ lstate.intermediate_table->Append(chunk); }
-	//	auto end_time = std::chrono::high_resolution_clock::now();
-	//	auto duration = std::chrono::duration_cast<std::chrono::microseconds>(end_time - start_time);
-	//	lstate.sink_time_us += duration.count();
-	//	lstate.sink_times++;
+	BeeProfiler::Get().InsertRecord("{PhysicalPipelineBreaker::Sink} append", profiler.Elapsed());
 
 	return SinkResultType::NEED_MORE_INPUT;
 }
@@ -67,13 +62,6 @@ SinkCombineResultType PhysicalPipelineBreaker::Combine(ExecutionContext &context
 	} else {
 		gstate.intermediate_table->Combine(*lstate.intermediate_table);
 	}
-
-	//	auto now = std::chrono::system_clock::now();
-	//	auto duration = now.time_since_epoch();
-	//	auto milliseconds = std::chrono::duration_cast<std::chrono::milliseconds>(duration).count();
-	//	auto avg_sink_time = lstate.sink_time_us / lstate.sink_times;
-	//	std::cerr << "[Breaker Sink Combine] time: " + std::to_string(milliseconds) +
-	//	                 "\tAverage Chunk Initialization Time: " + std::to_string(avg_sink_time) + " us\n";
 
 	return SinkCombineResultType::FINISHED;
 }
@@ -105,8 +93,14 @@ SourceResultType PhysicalPipelineBreaker::GetData(ExecutionContext &context, Dat
 		sink.initialized = true;
 	}
 
+	Profiler profiler;
+	profiler.Start();
+
 	std::lock_guard<std::mutex> lock(sink.glock);
 	sink.intermediate_table->Scan(sink.scan_state, chunk);
+
+	BeeProfiler::Get().InsertRecord("{PhysicalPipelineBreaker::GetData} scan", profiler.Elapsed());
+
 	return chunk.size() == 0 ? SourceResultType::FINISHED : SourceResultType::HAVE_MORE_OUTPUT;
 }
 }  // namespace duckdb
