@@ -26,24 +26,26 @@ public:
 
 class PipelineBreakerLocalState : public LocalSinkState {
 public:
-	explicit PipelineBreakerLocalState(vector<LogicalType> types) {
+	explicit PipelineBreakerLocalState(vector<LogicalType> types, ClientContext &context)
+	    : allocator(make_uniq<ColumnDataAllocator>(BufferManager::GetBufferManager(context))) {
+		// intermediate_table = make_uniq<ColumnDataCollection>(allocator, types);
 		intermediate_table = make_uniq<ColumnDataCollection>(Allocator::DefaultAllocator(), types);
 		intermediate_table->InitializeAppend(append_state);
 	}
 
 	unique_ptr<ColumnDataCollection> intermediate_table;
 	ColumnDataAppendState append_state;
+	shared_ptr<ColumnDataAllocator> allocator;
 };
 
 duckdb::SinkResultType PhysicalPipelineBreaker::Sink(duckdb::ExecutionContext &context, duckdb::DataChunk &chunk,
-                                                             duckdb::OperatorSinkInput &input) const {
+                                                     duckdb::OperatorSinkInput &input) const {
 	auto &lstate = input.local_state.Cast<PipelineBreakerLocalState>();
 
 	Profiler profiler;
 	profiler.Start();
-	{ lstate.intermediate_table->Append(chunk); }
-	BeeProfiler::Get().InsertRecord("{PhysicalPipelineBreaker::Sink} append", profiler.Elapsed());
-
+	{ lstate.intermediate_table->Append(lstate.append_state, chunk); }
+	BeeProfiler::Get().InsertRecord("[PhysicalPipelineBreaker::Sink] append", profiler.Elapsed());
 	return SinkResultType::NEED_MORE_INPUT;
 }
 
@@ -69,7 +71,6 @@ SinkCombineResultType PhysicalPipelineBreaker::Combine(ExecutionContext &context
 SinkFinalizeType PhysicalPipelineBreaker::Finalize(duckdb::Pipeline &pipeline, duckdb::Event &event,
                                                    duckdb::ClientContext &context,
                                                    duckdb::OperatorSinkFinalizeInput &input) const {
-	// JemallocExtension::Print();
 	return SinkFinalizeType::READY;
 }
 
@@ -78,7 +79,7 @@ unique_ptr<GlobalSinkState> PhysicalPipelineBreaker::GetGlobalSinkState(ClientCo
 }
 
 unique_ptr<LocalSinkState> PhysicalPipelineBreaker::GetLocalSinkState(ExecutionContext &context) const {
-	return make_uniq<PipelineBreakerLocalState>(types);
+	return make_uniq<PipelineBreakerLocalState>(types, context.client);
 }
 
 //===--------------------------------------------------------------------===//
@@ -99,7 +100,7 @@ SourceResultType PhysicalPipelineBreaker::GetData(ExecutionContext &context, Dat
 	std::lock_guard<std::mutex> lock(sink.glock);
 	sink.intermediate_table->Scan(sink.scan_state, chunk);
 
-	BeeProfiler::Get().InsertRecord("{PhysicalPipelineBreaker::GetData} scan", profiler.Elapsed());
+	BeeProfiler::Get().InsertRecord("[PhysicalPipelineBreaker::GetData] scan", profiler.Elapsed());
 
 	return chunk.size() == 0 ? SourceResultType::FINISHED : SourceResultType::HAVE_MORE_OUTPUT;
 }

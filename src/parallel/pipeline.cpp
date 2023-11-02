@@ -82,7 +82,6 @@ public:
 			str += "\n" + pipeline.ToString();
 		}
 		Printer::Print(str);
-		str += "1";
 	}
 };
 
@@ -147,7 +146,7 @@ bool Pipeline::ScheduleParallel(shared_ptr<Event> &event) {
 
 	// Hash Table Probing for left deep tree
 	if (source->GetName() == "SEQ_SCAN " && sink->GetName() == "EXPLAIN_ANALYZE" && !operators.empty()) {
-		max_threads = 4;
+		max_threads = 32;
 	}
 
 	if (source->GetName() == "BREAKER") {
@@ -155,7 +154,7 @@ bool Pipeline::ScheduleParallel(shared_ptr<Event> &event) {
 	}
 
 	if (source->GetName() == "SEQ_SCAN " && sink->GetName() == "BREAKER") {
-		max_threads = 4;
+		max_threads = 32;
 	}
 
 	// Hash Table Probing for Next Hash Table Building

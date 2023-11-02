@@ -45,7 +45,7 @@ public:
 
 	void Clear();
 
-	// Same rules as the constructor. We will add room for a header, in additio to
+	// Same rules as the constructor. We will add room for a header, in addition to
 	// the requested user bytes. We will then sector-align the result.
 	void Resize(uint64_t user_size);
 

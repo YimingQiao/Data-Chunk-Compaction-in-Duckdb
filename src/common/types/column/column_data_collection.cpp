@@ -1,13 +1,14 @@
 #include "duckdb/common/types/column/column_data_collection.hpp"
 
 #include "duckdb/common/printer.hpp"
+#include "duckdb/common/profiler.hpp"
+#include "duckdb/common/serializer/deserializer.hpp"
+#include "duckdb/common/serializer/serializer.hpp"
 #include "duckdb/common/string_util.hpp"
 #include "duckdb/common/types/column/column_data_collection_segment.hpp"
 #include "duckdb/common/types/value_map.hpp"
 #include "duckdb/common/vector_operations/vector_operations.hpp"
 #include "duckdb/storage/buffer_manager.hpp"
-#include "duckdb/common/serializer/serializer.hpp"
-#include "duckdb/common/serializer/deserializer.hpp"
 
 namespace duckdb {
 
@@ -730,6 +731,9 @@ void ColumnDataCollection::Append(ColumnDataAppendState &state, DataChunk &input
 		auto &chunk_data = segment.chunk_data.back();
 		idx_t append_amount = MinValue<idx_t>(remaining, STANDARD_VECTOR_SIZE - chunk_data.count);
 		if (append_amount > 0) {
+			Profiler profiler;
+			profiler.Start();
+
 			idx_t offset = input.size() - remaining;
 			for (idx_t vector_idx = 0; vector_idx < types.size(); vector_idx++) {
 				ColumnDataMetaData meta_data(copy_functions[vector_idx], segment, state, chunk_data,
@@ -738,6 +742,9 @@ void ColumnDataCollection::Append(ColumnDataAppendState &state, DataChunk &input
 				                                    offset, append_amount);
 			}
 			chunk_data.count += append_amount;
+
+			BeeProfiler::Get().InsertRecord("{ColumnDataCollection::Append} copy_functions.function",
+			                                profiler.Elapsed());
 		}
 		remaining -= append_amount;
 		if (remaining > 0) {

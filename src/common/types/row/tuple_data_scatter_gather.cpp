@@ -448,7 +448,6 @@ void TupleDataCollection::Scatter(TupleDataChunkState &chunk_state, const DataCh
 	for (idx_t i = 0; i < append_count; i++) {
 		FastMemset(row_locations[i], ~0, validity_bytes);
 	}
-
 	BeeProfiler::Get().InsertRecord("{TupleDataCollection::Scatter} memset", profiler.Elapsed());
 
 	if (!layout.AllConstant()) {

@@ -1,11 +1,11 @@
 #include "duckdb/common/types/row/tuple_data_collection.hpp"
 
+#include <algorithm>
+
 #include "duckdb/common/fast_mem.hpp"
 #include "duckdb/common/printer.hpp"
 #include "duckdb/common/row_operations/row_operations.hpp"
 #include "duckdb/common/types/row/tuple_data_allocator.hpp"
-
-#include <algorithm>
 
 namespace duckdb {
 
@@ -127,21 +127,21 @@ static void InitializeVectorFormat(vector<TupleDataVectorFormat> &vector_data, c
 	for (idx_t col_idx = 0; col_idx < types.size(); col_idx++) {
 		const auto &type = types[col_idx];
 		switch (type.InternalType()) {
-		case PhysicalType::STRUCT: {
-			const auto &child_list = StructType::GetChildTypes(type);
-			vector<LogicalType> child_types;
-			child_types.reserve(child_list.size());
-			for (const auto &child_entry : child_list) {
-				child_types.emplace_back(child_entry.second);
+			case PhysicalType::STRUCT: {
+				const auto &child_list = StructType::GetChildTypes(type);
+				vector<LogicalType> child_types;
+				child_types.reserve(child_list.size());
+				for (const auto &child_entry : child_list) {
+					child_types.emplace_back(child_entry.second);
+				}
+				InitializeVectorFormat(vector_data[col_idx].children, child_types);
+				break;
 			}
-			InitializeVectorFormat(vector_data[col_idx].children, child_types);
-			break;
-		}
-		case PhysicalType::LIST:
-			InitializeVectorFormat(vector_data[col_idx].children, {ListType::GetChildType(type)});
-			break;
-		default:
-			break;
+			case PhysicalType::LIST:
+				InitializeVectorFormat(vector_data[col_idx].children, {ListType::GetChildType(type)});
+				break;
+			default:
+				break;
 		}
 	}
 }
@@ -224,27 +224,27 @@ static inline void ToUnifiedFormatInternal(TupleDataVectorFormat &format, Vector
 	format.original_sel = format.unified.sel;
 	format.original_owned_sel.Initialize(format.unified.owned_sel);
 	switch (vector.GetType().InternalType()) {
-	case PhysicalType::STRUCT: {
-		auto &entries = StructVector::GetEntries(vector);
-		D_ASSERT(format.children.size() == entries.size());
-		for (idx_t struct_col_idx = 0; struct_col_idx < entries.size(); struct_col_idx++) {
-			ToUnifiedFormatInternal(reinterpret_cast<TupleDataVectorFormat &>(format.children[struct_col_idx]),
-			                        *entries[struct_col_idx], count);
+		case PhysicalType::STRUCT: {
+			auto &entries = StructVector::GetEntries(vector);
+			D_ASSERT(format.children.size() == entries.size());
+			for (idx_t struct_col_idx = 0; struct_col_idx < entries.size(); struct_col_idx++) {
+				ToUnifiedFormatInternal(reinterpret_cast<TupleDataVectorFormat &>(format.children[struct_col_idx]),
+				                        *entries[struct_col_idx], count);
+			}
+			break;
 		}
-		break;
-	}
-	case PhysicalType::LIST:
-		D_ASSERT(format.children.size() == 1);
-		ToUnifiedFormatInternal(reinterpret_cast<TupleDataVectorFormat &>(format.children[0]),
-		                        ListVector::GetEntry(vector), ListVector::GetListSize(vector));
-		break;
-	default:
-		break;
+		case PhysicalType::LIST:
+			D_ASSERT(format.children.size() == 1);
+			ToUnifiedFormatInternal(reinterpret_cast<TupleDataVectorFormat &>(format.children[0]),
+			                        ListVector::GetEntry(vector), ListVector::GetListSize(vector));
+			break;
+		default:
+			break;
 	}
 }
 
 void TupleDataCollection::ToUnifiedFormat(TupleDataChunkState &chunk_state, DataChunk &new_chunk) {
-	D_ASSERT(chunk_state.vector_data.size() >= chunk_state.column_ids.size()); // Needs InitializeAppend
+	D_ASSERT(chunk_state.vector_data.size() >= chunk_state.column_ids.size());  // Needs InitializeAppend
 	for (const auto &col_idx : chunk_state.column_ids) {
 		ToUnifiedFormatInternal(chunk_state.vector_data[col_idx], new_chunk.data[col_idx], new_chunk.size());
 	}
@@ -263,12 +263,17 @@ void TupleDataCollection::GetVectorData(const TupleDataChunkState &chunk_state, 
 
 void TupleDataCollection::Build(TupleDataPinState &pin_state, TupleDataChunkState &chunk_state,
                                 const idx_t append_offset, const idx_t append_count) {
+	Profiler profiler;
+	profiler.Start();
+
 	auto &segment = segments.back();
 	const auto size_before = segment.SizeInBytes();
 	segment.allocator->Build(segment, pin_state, chunk_state, append_offset, append_count);
 	data_size += segment.SizeInBytes() - size_before;
 	count += append_count;
 	Verify();
+
+	BeeProfiler::Get().InsertRecord("{TupleDataCollection::build}", profiler.Elapsed());
 }
 
 // LCOV_EXCL_START
@@ -541,4 +546,4 @@ void TupleDataCollection::VerifyEverythingPinned() const {
 }
 // LCOV_EXCL_STOP
 
-} // namespace duckdb
+}  // namespace duckdb
