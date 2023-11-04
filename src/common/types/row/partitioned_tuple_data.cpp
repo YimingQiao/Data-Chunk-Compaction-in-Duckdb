@@ -80,20 +80,34 @@ void PartitionedTupleData::AppendUnified(PartitionedTupleDataAppendState &state,
 		auto &partition = *partitions[partition_index.GetIndex()];
 		auto &partition_pin_state = *state.partition_pin_states[partition_index.GetIndex()];
 
+		Profiler profiler;
+		profiler.Start();
+
 		const auto size_before = partition.SizeInBytes();
 		partition.AppendUnified(partition_pin_state, state.chunk_state, input, append_sel, actual_append_count);
 		data_size += partition.SizeInBytes() - size_before;
+
+		BeeProfiler::Get().InsertRecord("{PartitionedTupleData::AppendUnified} - AppendUnified", profiler.Elapsed());
 	} else {
 		// Compute the heap sizes for the whole chunk
 		if (!layout.AllConstant()) {
 			TupleDataCollection::ComputeHeapSizes(state.chunk_state, input, state.partition_sel, actual_append_count);
 		}
 
+		Profiler profiler;
+		profiler.Start();
+
 		// Build the buffer space
 		BuildBufferSpace(state);
 
+		BeeProfiler::Get().InsertRecord("{PartitionedTupleData::AppendUnified} - BuildBufferSpace", profiler.Elapsed());
+
+		profiler.Start();
+
 		// Now scatter everything in one go
 		partitions[0]->Scatter(state.chunk_state, input, state.partition_sel, actual_append_count);
+
+		BeeProfiler::Get().InsertRecord("{PartitionedTupleData::AppendUnified} - Scatter", profiler.Elapsed());
 	}
 
 	count += actual_append_count;

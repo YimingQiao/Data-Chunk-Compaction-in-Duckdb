@@ -158,8 +158,9 @@ public:
 		}
 	}
 
-	~BeeProfiler() {
+	void EndProfiling() {
 		PrintResults();
+		Clear();
 	}
 
 	void PrintResults() const {
@@ -174,13 +175,22 @@ public:
 
 		// Print the results in alphabetical order
 		for (const auto &key : keys) {
+			if (key.find("TableScan") != std::string::npos && key.find("in_mem") == std::string::npos) {
+				continue;
+			}
 			double time = times_.at(key);
 			size_t calling_times = calling_times_.at(key);
 			double avg = time / calling_times;
 
-			std::cout << "Total: " << time << " s\tCalls: " << calling_times << "\tAvg: " << avg << " s\t" << key
+			std::cerr << "Total: " << time << " s\tCalls: " << calling_times << "\tAvg: " << avg << " s\t" << key
 			          << '\n';
 		}
+	}
+
+	void Clear() {
+		std::lock_guard<std::mutex> lock(mtx);
+		times_.clear();
+		calling_times_.clear();
 	}
 
 private:

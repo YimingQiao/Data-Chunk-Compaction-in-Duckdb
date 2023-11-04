@@ -16,16 +16,24 @@ using ProbeSpillLocalState = JoinHashTable::ProbeSpillLocalAppendState;
 
 JoinHashTable::JoinHashTable(BufferManager &buffer_manager_p, const vector<JoinCondition> &conditions_p,
                              vector<LogicalType> btypes, JoinType type_p)
-    : buffer_manager(buffer_manager_p), conditions(conditions_p), build_types(std::move(btypes)), entry_size(0),
-      tuple_size(0), vfound(Value::BOOLEAN(false)), join_type(type_p), finalized(false), has_null(false),
-      external(false), radix_bits(4), partition_start(0), partition_end(0) {
-
+    : buffer_manager(buffer_manager_p),
+      conditions(conditions_p),
+      build_types(std::move(btypes)),
+      entry_size(0),
+      tuple_size(0),
+      vfound(Value::BOOLEAN(false)),
+      join_type(type_p),
+      finalized(false),
+      has_null(false),
+      external(false),
+      radix_bits(0),
+      partition_start(0),
+      partition_end(0) {
 	for (auto &condition : conditions) {
 		D_ASSERT(condition.left->return_type == condition.right->return_type);
 		auto type = condition.left->return_type;
 		if (condition.comparison == ExpressionType::COMPARE_EQUAL ||
 		    condition.comparison == ExpressionType::COMPARE_NOT_DISTINCT_FROM) {
-
 			// ensure that all equality conditions are at the front,
 			// and that all other conditions are at the back
 			D_ASSERT(equality_types.size() == condition_types.size());
@@ -330,7 +338,7 @@ void JoinHashTable::Finalize(idx_t chunk_idx_from, idx_t chunk_idx_to, bool para
 
 unique_ptr<ScanStructure> JoinHashTable::InitializeScanStructure(DataChunk &keys, TupleDataChunkState &key_state,
                                                                  const SelectionVector *&current_sel) {
-	D_ASSERT(Count() > 0); // should be handled before
+	D_ASSERT(Count() > 0);  // should be handled before
 	D_ASSERT(finalized);
 
 	// set up the scan structure
@@ -373,7 +381,10 @@ unique_ptr<ScanStructure> JoinHashTable::Probe(DataChunk &keys, TupleDataChunkSt
 }
 
 ScanStructure::ScanStructure(JoinHashTable &ht_p, TupleDataChunkState &key_state_p)
-    : key_state(key_state_p), pointers(LogicalType::POINTER), sel_vector(STANDARD_VECTOR_SIZE), ht(ht_p),
+    : key_state(key_state_p),
+      pointers(LogicalType::POINTER),
+      sel_vector(STANDARD_VECTOR_SIZE),
+      ht(ht_p),
       finished(false) {
 }
 
@@ -382,28 +393,28 @@ void ScanStructure::Next(DataChunk &keys, DataChunk &left, DataChunk &result) {
 		return;
 	}
 	switch (ht.join_type) {
-	case JoinType::INNER:
-	case JoinType::RIGHT:
-		NextInnerJoin(keys, left, result);
-		break;
-	case JoinType::SEMI:
-		NextSemiJoin(keys, left, result);
-		break;
-	case JoinType::MARK:
-		NextMarkJoin(keys, left, result);
-		break;
-	case JoinType::ANTI:
-		NextAntiJoin(keys, left, result);
-		break;
-	case JoinType::OUTER:
-	case JoinType::LEFT:
-		NextLeftJoin(keys, left, result);
-		break;
-	case JoinType::SINGLE:
-		NextSingleJoin(keys, left, result);
-		break;
-	default:
-		throw InternalException("Unhandled join type in JoinHashTable");
+		case JoinType::INNER:
+		case JoinType::RIGHT:
+			NextInnerJoin(keys, left, result);
+			break;
+		case JoinType::SEMI:
+			NextSemiJoin(keys, left, result);
+			break;
+		case JoinType::MARK:
+			NextMarkJoin(keys, left, result);
+			break;
+		case JoinType::ANTI:
+			NextAntiJoin(keys, left, result);
+			break;
+		case JoinType::OUTER:
+		case JoinType::LEFT:
+			NextLeftJoin(keys, left, result);
+			break;
+		case JoinType::SINGLE:
+			NextSingleJoin(keys, left, result);
+			break;
+		default:
+			throw InternalException("Unhandled join type in JoinHashTable");
 	}
 }
 
@@ -660,23 +671,23 @@ void ScanStructure::NextMarkJoin(DataChunk &keys, DataChunk &input, DataChunk &r
 		auto bool_result = FlatVector::GetData<bool>(result_vector);
 		auto &mask = FlatVector::Validity(result_vector);
 		switch (last_key.GetVectorType()) {
-		case VectorType::CONSTANT_VECTOR:
-			if (ConstantVector::IsNull(last_key)) {
-				mask.SetAllInvalid(input.size());
+			case VectorType::CONSTANT_VECTOR:
+				if (ConstantVector::IsNull(last_key)) {
+					mask.SetAllInvalid(input.size());
+				}
+				break;
+			case VectorType::FLAT_VECTOR:
+				mask.Copy(FlatVector::Validity(last_key), input.size());
+				break;
+			default: {
+				UnifiedVectorFormat kdata;
+				last_key.ToUnifiedFormat(keys.size(), kdata);
+				for (idx_t i = 0; i < input.size(); i++) {
+					auto kidx = kdata.sel->get_index(i);
+					mask.Set(i, kdata.validity.RowIsValid(kidx));
+				}
+				break;
 			}
-			break;
-		case VectorType::FLAT_VECTOR:
-			mask.Copy(FlatVector::Validity(last_key), input.size());
-			break;
-		default: {
-			UnifiedVectorFormat kdata;
-			last_key.ToUnifiedFormat(keys.size(), kdata);
-			for (idx_t i = 0; i < input.size(); i++) {
-				auto kidx = kdata.sel->get_index(i);
-				mask.Set(i, kdata.validity.RowIsValid(kidx));
-			}
-			break;
-		}
 		}
 
 		auto count_star = FlatVector::GetData<int64_t>(info.result_chunk.data[0]);
@@ -1145,4 +1156,4 @@ void ProbeSpill::PrepareNextProbe() {
 	consumer->InitializeScan();
 }
 
-} // namespace duckdb
+}  // namespace duckdb

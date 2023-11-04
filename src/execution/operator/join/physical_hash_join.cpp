@@ -184,8 +184,8 @@ unique_ptr<LocalSinkState> PhysicalHashJoin::GetLocalSinkState(ExecutionContext 
 SinkResultType PhysicalHashJoin::Sink(ExecutionContext &context, DataChunk &chunk, OperatorSinkInput &input) const {
 	auto &lstate = input.local_state.Cast<HashJoinLocalSinkState>();
 
-	context.thread.spike_profiler.StartTiming("[HashJoin - (1) Partition Table - " + conditions[0].left->GetName() +
-	                                          "=" + conditions[0].right->GetName() + "]");
+	Profiler profiler;
+	profiler.Start();
 
 	// resolve the join keys for the right chunk
 	lstate.join_keys.Reset();
@@ -210,16 +210,14 @@ SinkResultType PhysicalHashJoin::Sink(ExecutionContext &context, DataChunk &chun
 		ht.Build(lstate.append_state, lstate.join_keys, lstate.build_chunk);
 	}
 
-	context.thread.spike_profiler.EndTiming("[HashJoin - (1) Partition Table - " + conditions[0].left->GetName() + "=" +
-	                                        conditions[0].right->GetName() + "]");
+	BeeProfiler::Get().InsertRecord("[HashJoin - (1) Partition Table - " + conditions[0].left->GetName() + "=" +
+	                                    conditions[0].right->GetName() + "]",
+	                                profiler.Elapsed());
 
 	return SinkResultType::NEED_MORE_INPUT;
 }
 
 SinkCombineResultType PhysicalHashJoin::Combine(ExecutionContext &context, OperatorSinkCombineInput &input) const {
-	context.thread.spike_profiler.StartTiming("[HashJoin - (1) Partition Table - " + conditions[0].left->GetName() +
-	                                          "=" + conditions[0].right->GetName() + "]");
-
 	auto &gstate = input.global_state.Cast<HashJoinGlobalSinkState>();
 	auto &lstate = input.local_state.Cast<HashJoinLocalSinkState>();
 	if (lstate.hash_table) {
@@ -230,9 +228,6 @@ SinkCombineResultType PhysicalHashJoin::Combine(ExecutionContext &context, Opera
 	auto &client_profiler = QueryProfiler::Get(context.client);
 	context.thread.profiler.Flush(*this, lstate.build_executor, "build_executor", 1);
 	client_profiler.Flush(context.thread.profiler);
-
-	context.thread.spike_profiler.EndTiming("[HashJoin - (1) Partition Table - " + conditions[0].left->GetName() + "=" +
-	                                        conditions[0].right->GetName() + "]");
 
 	return SinkCombineResultType::FINISHED;
 }
@@ -253,15 +248,16 @@ public:
 	}
 
 	TaskExecutionResult ExecuteTask(TaskExecutionMode mode) override {
-		SpikeProfiler spike_profiler;
-		spike_profiler.StartTiming("[HashJoin - (2) Build Table - " + sink.hash_table->conditions[0].left->GetName() +
-		                           "=" + sink.hash_table->conditions[0].right->GetName() + "]");
+		Profiler profiler;
+		profiler.Start();
 
 		sink.hash_table->Finalize(chunk_idx_from, chunk_idx_to, parallel);
 		event->FinishTask();
 
-		spike_profiler.EndTiming("[HashJoin - (2) Build Table - " + sink.hash_table->conditions[0].left->GetName() +
-		                         "=" + sink.hash_table->conditions[0].right->GetName() + "]");
+		BeeProfiler::Get().InsertRecord("[HashJoin - (2) Build Table - " +
+		                                    sink.hash_table->conditions[0].left->GetName() + "=" +
+		                                    sink.hash_table->conditions[0].right->GetName() + "]",
+		                                profiler.Elapsed());
 		return TaskExecutionResult::TASK_FINISHED;
 	}
 
@@ -498,8 +494,8 @@ OperatorResultType PhysicalHashJoin::ExecuteInternal(ExecutionContext &context, 
 	D_ASSERT(sink.finalized);
 	D_ASSERT(!sink.scanned_data);
 
-	context.thread.spike_profiler.StartTiming("[HashJoin - (3) Probe Table - " + conditions[0].left->GetName() + "=" +
-	                                          conditions[0].right->GetName() + "]");
+	Profiler profiler;
+	profiler.Start();
 
 	// some initialization for external hash join
 	if (sink.external && !state.initialized) {
@@ -548,8 +544,9 @@ OperatorResultType PhysicalHashJoin::ExecuteInternal(ExecutionContext &context, 
 	}
 	state.scan_structure->Next(state.join_keys, input, chunk);
 
-	context.thread.spike_profiler.EndTiming("[HashJoin - (3) Probe Table - " + conditions[0].left->GetName() + "=" +
-	                                        conditions[0].right->GetName() + "]");
+	BeeProfiler::Get().InsertRecord(
+	    "[HashJoin - (3) Probe Table - " + conditions[0].left->GetName() + "=" + conditions[0].right->GetName() + "]",
+	    profiler.Elapsed());
 	return OperatorResultType::HAVE_MORE_OUTPUT;
 }
 

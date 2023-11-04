@@ -24,6 +24,8 @@ public:
 
 	~PhysicalPipelineBreaker() override;
 
+	shared_ptr<ColumnDataAllocator> shared_allocator;
+
 public:
 	// Sink interface
 	SinkResultType Sink(ExecutionContext &context, DataChunk &chunk, OperatorSinkInput &input) const override;

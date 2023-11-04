@@ -129,18 +129,21 @@ static void TableScanFunc(ClientContext &context, TableFunctionInput &data_p, Da
 			storage.Scan(transaction, state.all_columns, state.scan_state);
 			output.ReferenceColumns(state.all_columns, gstate.projection_ids);
 		} else {
-			state.spike_profiler.StartTiming("[TableScan - " + TableScanToString(&bind_data) + " - Scan]");
+			Profiler profiler;
+			profiler.Start();
 			storage.Scan(transaction, output, state.scan_state);
-			state.spike_profiler.EndTiming("[TableScan - " + TableScanToString(&bind_data) + " - Scan]");
+			BeeProfiler::Get().InsertRecord("[TableScan - " + TableScanToString(&bind_data) + " - Scan]",
+			                                profiler.Elapsed());
 		}
 		if (output.size() > 0) {
 			return;
 		}
-
-		state.spike_profiler.StartTiming("[TableScan - " + TableScanToString(&bind_data) + " - Mutex]");
+		Profiler profiler;
+		profiler.Start();
 		bool ret = TableScanParallelStateNext(context, data_p.bind_data.get(), data_p.local_state.get(),
 		                                      data_p.global_state.get());
-		state.spike_profiler.EndTiming("[TableScan - " + TableScanToString(&bind_data) + " - Mutex]");
+		BeeProfiler::Get().InsertRecord("[TableScan - " + TableScanToString(&bind_data) + " - Mutex]",
+		                                profiler.Elapsed());
 		if (!ret) {
 			return;
 		}

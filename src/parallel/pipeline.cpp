@@ -141,12 +141,12 @@ bool Pipeline::ScheduleParallel(shared_ptr<Event> &event) {
 		auto *scan = (PhysicalTableScan *)source.get();
 		string table_name = scan->function.to_string(scan->bind_data.get());
 
-		max_threads = 4;
+		max_threads = 32;
 	}
 
 	// Hash Table Probing for left deep tree
 	if (source->GetName() == "SEQ_SCAN " && sink->GetName() == "EXPLAIN_ANALYZE" && !operators.empty()) {
-		max_threads = 32;
+		max_threads = 64;
 	}
 
 	if (source->GetName() == "BREAKER") {
@@ -159,16 +159,18 @@ bool Pipeline::ScheduleParallel(shared_ptr<Event> &event) {
 
 	// Hash Table Probing for Next Hash Table Building
 	if (source->GetName() == "SEQ_SCAN " && sink->GetName() == "HASH_JOIN" && !operators.empty()) {
-		max_threads = 4;
+		max_threads = 32;
 	}
 
-	size_t active_threads = TaskScheduler::GetScheduler(executor.context).NumberOfThreads();
-	auto now = std::chrono::system_clock::now();
-	auto duration = now.time_since_epoch();
-	auto milliseconds = std::chrono::duration_cast<std::chrono::milliseconds>(duration).count() % 1000000;
-	std::cerr << " [Open] " + source->GetName() + " --> " + sink->GetName() +
-	                 "\t #task/#thread: " + std::to_string(max_threads) + "/" + std::to_string(active_threads) +
-	                 "\tTick: " + std::to_string(milliseconds) + "ms\n";
+	if (sink->GetName() != "BATCH_CREATE_TABLE_AS") {
+		size_t active_threads = TaskScheduler::GetScheduler(executor.context).NumberOfThreads();
+		auto now = std::chrono::system_clock::now();
+		auto duration = now.time_since_epoch();
+		auto milliseconds = std::chrono::duration_cast<std::chrono::milliseconds>(duration).count() % 1000000;
+		std::cerr << " [Open] " + source->GetName() + " --> " + sink->GetName() +
+		                 "\t #task/#thread: " + std::to_string(max_threads) + "/" + std::to_string(active_threads) +
+		                 "\tTick: " + std::to_string(milliseconds) + "ms\n";
+	}
 
 	return LaunchScanTasks(event, max_threads);
 }

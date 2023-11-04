@@ -26,8 +26,7 @@ public:
 
 class PipelineBreakerLocalState : public LocalSinkState {
 public:
-	explicit PipelineBreakerLocalState(vector<LogicalType> types, ClientContext &context)
-	    : allocator(make_uniq<ColumnDataAllocator>(BufferManager::GetBufferManager(context))) {
+	explicit PipelineBreakerLocalState(vector<LogicalType> types, ClientContext &context) {
 		// intermediate_table = make_uniq<ColumnDataCollection>(allocator, types);
 		intermediate_table = make_uniq<ColumnDataCollection>(Allocator::DefaultAllocator(), types);
 		intermediate_table->InitializeAppend(append_state);
@@ -35,7 +34,6 @@ public:
 
 	unique_ptr<ColumnDataCollection> intermediate_table;
 	ColumnDataAppendState append_state;
-	shared_ptr<ColumnDataAllocator> allocator;
 };
 
 duckdb::SinkResultType PhysicalPipelineBreaker::Sink(duckdb::ExecutionContext &context, duckdb::DataChunk &chunk,
