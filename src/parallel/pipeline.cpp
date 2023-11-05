@@ -137,15 +137,14 @@ bool Pipeline::ScheduleParallel(shared_ptr<Event> &event) {
 	idx_t kMultiThread = 32;
 
 	// Hash Table Partition
-	if (source->GetName() == "SEQ_SCAN " && sink->GetName() == "HASH_JOIN" && operators.empty()) {
-		auto *scan = (PhysicalTableScan *)source.get();
-		string table_name = scan->function.to_string(scan->bind_data.get());
-
+	if ((source->GetName() == "SEQ_SCAN " || source->GetName() == "READ_PARQUET ") && sink->GetName() == "HASH_JOIN" &&
+	    operators.empty()) {
 		max_threads = 32;
 	}
 
 	// Hash Table Probing for left deep tree
-	if (source->GetName() == "SEQ_SCAN " && sink->GetName() == "EXPLAIN_ANALYZE" && !operators.empty()) {
+	if ((source->GetName() == "SEQ_SCAN " || source->GetName() == "READ_PARQUET ") &&
+	    sink->GetName() == "EXPLAIN_ANALYZE" && !operators.empty()) {
 		max_threads = 64;
 	}
 
@@ -153,12 +152,13 @@ bool Pipeline::ScheduleParallel(shared_ptr<Event> &event) {
 		max_threads = 32;
 	}
 
-	if (source->GetName() == "SEQ_SCAN " && sink->GetName() == "BREAKER") {
+	if ((source->GetName() == "SEQ_SCAN " || source->GetName() == "READ_PARQUET ") && sink->GetName() == "BREAKER") {
 		max_threads = 32;
 	}
 
 	// Hash Table Probing for Next Hash Table Building
-	if (source->GetName() == "SEQ_SCAN " && sink->GetName() == "HASH_JOIN" && !operators.empty()) {
+	if ((source->GetName() == "SEQ_SCAN " || source->GetName() == "READ_PARQUET ") && sink->GetName() == "HASH_JOIN" &&
+	    !operators.empty()) {
 		max_threads = 32;
 	}
 

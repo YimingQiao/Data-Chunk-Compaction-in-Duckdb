@@ -813,12 +813,17 @@ static void ApplyFilter(Vector &v, TableFilter &filter, parquet_filter_t &filter
 }
 
 void ParquetReader::Scan(ParquetReaderScanState &state, DataChunk &result) {
+	Profiler profiler;
+	profiler.Start();
+
 	while (ScanInternal(state, result)) {
 		if (result.size() > 0) {
 			break;
 		}
 		result.Reset();
 	}
+
+	BeeProfiler::Get().InsertRecord("[ParquetReader - Scan - " + file_name + "]", profiler.Elapsed());
 }
 
 bool ParquetReader::ScanInternal(ParquetReaderScanState &state, DataChunk &result) {

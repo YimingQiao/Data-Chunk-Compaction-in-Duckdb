@@ -214,11 +214,11 @@ unique_ptr<LogicalOperator> Optimizer::Optimize(unique_ptr<LogicalOperator> plan
 	Planner::VerifyPlan(context, plan);
 
 	// if this plan is a Select, we print it
-	//	if (plan->type != LogicalOperatorType::LOGICAL_INSERT && plan->type != LogicalOperatorType::LOGICAL_CREATE_TABLE
-	//&& 	    plan->type != LogicalOperatorType::LOGICAL_UPDATE && plan->type != LogicalOperatorType::LOGICAL_DELETE) {
-	//		Printer::Print("Input Logical Plan: ");
-	//		plan->Print();
-	//	}
+	//		if (plan->type != LogicalOperatorType::LOGICAL_INSERT && plan->type !=
+	// LogicalOperatorType::LOGICAL_CREATE_TABLE
+	//	&& 	    plan->type != LogicalOperatorType::LOGICAL_UPDATE && plan->type != LogicalOperatorType::LOGICAL_DELETE)
+	//{ 			Printer::Print("Input Logical Plan: "); 			plan->Print();
+	//		}
 
 	return std::move(plan);
 }
