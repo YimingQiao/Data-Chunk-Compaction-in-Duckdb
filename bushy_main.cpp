@@ -32,32 +32,32 @@ int main() {
 	// ---------------------------------------- Load Data --------------------------------------------------
 	// loading table into memory, using the temp table (so that we are sure the data is in memory, even if DuckDB is not
 	// in in-memory mode.)
-	{
-		con.Query("CREATE TEMPORARY TABLE student AS SELECT * FROM read_parquet('student.parquet');");
-		con.Query("CREATE TEMPORARY TABLE department AS SELECT * FROM read_parquet('department.parquet');");
-		// con.Query("CREATE TEMPORARY TABLE room AS SELECT * FROM read_parquet('room.parquet');");
-		con.Query("CREATE TEMPORARY TABLE type AS SELECT * FROM read_parquet('type.parquet');");
-	}
+	//	{
+	//		con.Query("CREATE TEMPORARY TABLE student AS SELECT * FROM read_parquet('student.parquet');");
+	//		con.Query("CREATE TEMPORARY TABLE department AS SELECT * FROM read_parquet('department.parquet');");
+	//		con.Query("CREATE TEMPORARY TABLE room AS SELECT * FROM read_parquet('room.parquet');");
+	//		con.Query("CREATE TEMPORARY TABLE type AS SELECT * FROM read_parquet('type.parquet');");
+	//	}
 
 	// Or, leave tables in disk, we create the views
-	//	{
-	//		con.Query("CREATE VIEW student AS SELECT * FROM read_parquet('student.parquet');");
-	//		con.Query("CREATE VIEW department AS SELECT * FROM read_parquet('department.parquet');");
-	//		con.Query("CREATE VIEW room AS SELECT * FROM read_parquet('/public/yiming/room.parquet');");
-	//		con.Query("CREATE VIEW type AS SELECT * FROM read_parquet('/public/yiming/type.parquet');");
-	//	}
+	{
+		con.Query("CREATE VIEW student AS SELECT * FROM read_parquet('/public/yiming/student.parquet');");
+		con.Query("CREATE VIEW department AS SELECT * FROM read_parquet('/public/yiming/department.parquet');");
+		con.Query("CREATE VIEW room AS SELECT * FROM read_parquet('/public/yiming/room.parquet');");
+		con.Query("CREATE VIEW type AS SELECT * FROM read_parquet('/public/yiming/type.parquet');");
+	}
 	duckdb::BeeProfiler::Get().Clear();
 
-	{
-		auto res = con.Query("SET s3_region='ap-southeast-1';");
-		con.Query("SET s3_access_key_id='AKIARZ5TMPGJOMABL7SN';");
-		con.Query("SET s3_secret_access_key='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';");
-		res = con.Query("CREATE VIEW room AS SELECT * FROM read_parquet('s3://parquets/room.parquet');");
-		if (res->HasError())
-			std::cerr << res->GetError() << "\n";
-		else
-			std::cout << res->ToString() << "\n";
-	}
+	//	{
+	//		con.Query("SET s3_region='ap-southeast-1';");
+	//		con.Query("SET s3_access_key_id='AKIARZ5TMPGJP7QVU57H';");
+	//		con.Query("SET s3_secret_access_key='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';");
+	//		auto res = con.Query("CREATE TABLE room AS SELECT * FROM read_parquet('s3://parquets/room.parquet');");
+	//		if (res->HasError())
+	//			std::cerr << res->GetError() << "\n";
+	//		else
+	//			std::cout << res->ToString() << "\n";
+	//	}
 
 	// ------------------------------------------ Query -----------------------------------------------------
 
@@ -69,22 +69,22 @@ int main() {
 		    "FROM student, department, room, type "
 		    "WHERE student.stu_id = room.stu_id AND student.major_id = department.major_id AND room.type = type.type;";
 
-		//		for (size_t i = 0; i < 5; ++i) {
-		//			auto result = con.Query(seq_sql_join);
-		//
-		//			duckdb::BeeProfiler::Get().EndProfiling();
-		//			std::cerr << "----------------------------------------------------------\n";
-		//
-		//			if (i >= 4) {
-		//				if (!result->HasError()) {
-		//					std::string plan = result->GetValue(1, 0).ToString();
-		//					std::cerr << plan << "\n";
-		//					// std::cerr << result->ToString() << "\n";
-		//				} else {
-		//					std::cerr << result->GetError() << "\n";
-		//				}
-		//			}
-		//		}
+		for (size_t i = 0; i < 5; ++i) {
+			auto result = con.Query(seq_sql_join);
+
+			duckdb::BeeProfiler::Get().EndProfiling();
+			std::cerr << "----------------------------------------------------------\n";
+
+			if (i >= 3) {
+				if (!result->HasError()) {
+					std::string plan = result->GetValue(1, 0).ToString();
+					std::cerr << plan << "\n";
+					// std::cerr << result->ToString() << "\n";
+				} else {
+					std::cerr << result->GetError() << "\n";
+				}
+			}
+		}
 	}
 
 	// BUSHY join query
@@ -98,18 +98,22 @@ int main() {
 		    "FROM student, department WHERE student.major_id = department.major_id) AS t2, "
 		    "WHERE t1.stu_id = t2.stu_id;";
 
-		//		for (size_t i = 0; i < 3; ++i) {
-		//			auto result = con.Query(bushy_sql_join);
-		//			if (!result->HasError()) {
-		//				std::string plan = result->GetValue(1, 0).ToString();
-		//				std::cerr << plan << "\n";
-		//				// std::cerr << result->ToString() << "\n";
-		//			} else {
-		//				std::cerr << result->GetError() << "\n";
-		//			}
-		//			duckdb::BeeProfiler::Get().EndProfiling();
-		//			std::cerr << "\n";
-		//		}
+		for (size_t i = 0; i < 5; ++i) {
+			auto result = con.Query(bushy_sql_join);
+
+			duckdb::BeeProfiler::Get().EndProfiling();
+			std::cerr << "----------------------------------------------------------\n";
+
+			if (i >= 3) {
+				if (!result->HasError()) {
+					std::string plan = result->GetValue(1, 0).ToString();
+					std::cerr << plan << "\n";
+					// std::cerr << result->ToString() << "\n";
+				} else {
+					std::cerr << result->GetError() << "\n";
+				}
+			}
+		}
 	}
 
 	// Left-deep join Bushy
