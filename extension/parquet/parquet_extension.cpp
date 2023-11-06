@@ -2,17 +2,17 @@
 
 #include "parquet_extension.hpp"
 
-#include "duckdb.hpp"
-#include "parquet_metadata.hpp"
-#include "parquet_reader.hpp"
-#include "parquet_writer.hpp"
-#include "zstd_file_system.hpp"
-
 #include <fstream>
 #include <iostream>
 #include <numeric>
 #include <string>
 #include <vector>
+
+#include "duckdb.hpp"
+#include "parquet_metadata.hpp"
+#include "parquet_reader.hpp"
+#include "parquet_writer.hpp"
+#include "zstd_file_system.hpp"
 #ifndef DUCKDB_AMALGAMATION
 #include "duckdb/catalog/catalog.hpp"
 #include "duckdb/catalog/catalog_entry/table_function_catalog_entry.hpp"
@@ -323,8 +323,9 @@ public:
 		return percentage;
 	}
 
-	static unique_ptr<LocalTableFunctionState>
-	ParquetScanInitLocal(ExecutionContext &context, TableFunctionInitInput &input, GlobalTableFunctionState *gstate_p) {
+	static unique_ptr<LocalTableFunctionState> ParquetScanInitLocal(ExecutionContext &context,
+	                                                                TableFunctionInitInput &input,
+	                                                                GlobalTableFunctionState *gstate_p) {
 		auto &bind_data = input.bind_data->Cast<ParquetReadBindData>();
 		auto &gstate = gstate_p->Cast<ParquetReadGlobalState>();
 
@@ -431,6 +432,9 @@ public:
 		auto &bind_data = data_p.bind_data->CastNoConst<ParquetReadBindData>();
 
 		do {
+			Profiler profiler;
+			profiler.Start();
+
 			if (gstate.CanRemoveFilterColumns()) {
 				data.all_columns.Reset();
 				data.reader->Scan(data.scan_state, data.all_columns);
@@ -441,13 +445,17 @@ public:
 				MultiFileReader::FinalizeChunk(bind_data.reader_bind, data.reader->reader_data, output);
 			}
 
+			BeeProfiler::Get().InsertRecord("[Parquet - Scan - " + data.reader->file_name + "]", profiler.Elapsed());
+
 			bind_data.chunk_count++;
 			if (output.size() > 0) {
 				return;
 			}
+			profiler.Start();
 			if (!ParquetParallelStateNext(context, bind_data, data, gstate)) {
 				return;
 			}
+			BeeProfiler::Get().InsertRecord("[Parquet - Mutex - " + data.reader->file_name + "]", profiler.Elapsed());
 		} while (true);
 	}
 
@@ -595,49 +603,49 @@ public:
 static case_insensitive_map_t<LogicalType> GetChildNameToTypeMap(const LogicalType &type) {
 	case_insensitive_map_t<LogicalType> name_to_type_map;
 	switch (type.id()) {
-	case LogicalTypeId::LIST:
-		name_to_type_map.emplace("element", ListType::GetChildType(type));
-		break;
-	case LogicalTypeId::MAP:
-		name_to_type_map.emplace("key", MapType::KeyType(type));
-		name_to_type_map.emplace("value", MapType::ValueType(type));
-		break;
-	case LogicalTypeId::STRUCT:
-		for (auto &child_type : StructType::GetChildTypes(type)) {
-			if (child_type.first == FieldID::DUCKDB_FIELD_ID) {
-				throw BinderException("Cannot have column named \"%s\" with FIELD_IDS", FieldID::DUCKDB_FIELD_ID);
+		case LogicalTypeId::LIST:
+			name_to_type_map.emplace("element", ListType::GetChildType(type));
+			break;
+		case LogicalTypeId::MAP:
+			name_to_type_map.emplace("key", MapType::KeyType(type));
+			name_to_type_map.emplace("value", MapType::ValueType(type));
+			break;
+		case LogicalTypeId::STRUCT:
+			for (auto &child_type : StructType::GetChildTypes(type)) {
+				if (child_type.first == FieldID::DUCKDB_FIELD_ID) {
+					throw BinderException("Cannot have column named \"%s\" with FIELD_IDS", FieldID::DUCKDB_FIELD_ID);
+				}
+				name_to_type_map.emplace(child_type);
 			}
-			name_to_type_map.emplace(child_type);
-		}
-		break;
-	default: // LCOV_EXCL_START
-		throw InternalException("Unexpected type in GetChildNameToTypeMap");
-	} // LCOV_EXCL_STOP
+			break;
+		default:  // LCOV_EXCL_START
+			throw InternalException("Unexpected type in GetChildNameToTypeMap");
+	}  // LCOV_EXCL_STOP
 	return name_to_type_map;
 }
 
 static void GetChildNamesAndTypes(const LogicalType &type, vector<string> &child_names,
                                   vector<LogicalType> &child_types) {
 	switch (type.id()) {
-	case LogicalTypeId::LIST:
-		child_names.emplace_back("element");
-		child_types.emplace_back(ListType::GetChildType(type));
-		break;
-	case LogicalTypeId::MAP:
-		child_names.emplace_back("key");
-		child_names.emplace_back("value");
-		child_types.emplace_back(MapType::KeyType(type));
-		child_types.emplace_back(MapType::ValueType(type));
-		break;
-	case LogicalTypeId::STRUCT:
-		for (auto &child_type : StructType::GetChildTypes(type)) {
-			child_names.emplace_back(child_type.first);
-			child_types.emplace_back(child_type.second);
-		}
-		break;
-	default: // LCOV_EXCL_START
-		throw InternalException("Unexpected type in GetChildNamesAndTypes");
-	} // LCOV_EXCL_STOP
+		case LogicalTypeId::LIST:
+			child_names.emplace_back("element");
+			child_types.emplace_back(ListType::GetChildType(type));
+			break;
+		case LogicalTypeId::MAP:
+			child_names.emplace_back("key");
+			child_names.emplace_back("value");
+			child_types.emplace_back(MapType::KeyType(type));
+			child_types.emplace_back(MapType::ValueType(type));
+			break;
+		case LogicalTypeId::STRUCT:
+			for (auto &child_type : StructType::GetChildTypes(type)) {
+				child_names.emplace_back(child_type.first);
+				child_types.emplace_back(child_type.second);
+			}
+			break;
+		default:  // LCOV_EXCL_START
+			throw InternalException("Unexpected type in GetChildNamesAndTypes");
+	}  // LCOV_EXCL_STOP
 }
 
 static void GenerateFieldIDs(ChildFieldIDs &field_ids, idx_t &field_id, const vector<string> &names,
@@ -692,7 +700,7 @@ static void GetFieldIDs(const Value &field_ids_value, ChildFieldIDs &field_ids,
 			throw BinderException("Column name \"%s\" specified in FIELD_IDS not found. Available column names: [%s]",
 			                      col_name, names);
 		}
-		D_ASSERT(field_ids.ids->find(col_name) == field_ids.ids->end()); // Caught by STRUCT - deduplicates keys
+		D_ASSERT(field_ids.ids->find(col_name) == field_ids.ids->end());  // Caught by STRUCT - deduplicates keys
 
 		const auto &child_value = struct_children[i];
 		const auto &child_type = child_value.type();
@@ -860,35 +868,35 @@ template <>
 const char *EnumUtil::ToChars<duckdb_parquet::format::CompressionCodec::type>(
     duckdb_parquet::format::CompressionCodec::type value) {
 	switch (value) {
-	case CompressionCodec::UNCOMPRESSED:
-		return "UNCOMPRESSED";
-		break;
-	case CompressionCodec::SNAPPY:
-		return "SNAPPY";
-		break;
-	case CompressionCodec::GZIP:
-		return "GZIP";
-		break;
-	case CompressionCodec::LZO:
-		return "LZO";
-		break;
-	case CompressionCodec::BROTLI:
-		return "BROTLI";
-		break;
-	case CompressionCodec::LZ4:
-		return "LZ4";
-		break;
-	case CompressionCodec::ZSTD:
-		return "ZSTD";
-		break;
-	default:
-		throw NotImplementedException(StringUtil::Format("Enum value: '%s' not implemented", value));
+		case CompressionCodec::UNCOMPRESSED:
+			return "UNCOMPRESSED";
+			break;
+		case CompressionCodec::SNAPPY:
+			return "SNAPPY";
+			break;
+		case CompressionCodec::GZIP:
+			return "GZIP";
+			break;
+		case CompressionCodec::LZO:
+			return "LZO";
+			break;
+		case CompressionCodec::BROTLI:
+			return "BROTLI";
+			break;
+		case CompressionCodec::LZ4:
+			return "LZ4";
+			break;
+		case CompressionCodec::ZSTD:
+			return "ZSTD";
+			break;
+		default:
+			throw NotImplementedException(StringUtil::Format("Enum value: '%s' not implemented", value));
 	}
 }
 
 template <>
-duckdb_parquet::format::CompressionCodec::type
-EnumUtil::FromString<duckdb_parquet::format::CompressionCodec::type>(const char *value) {
+duckdb_parquet::format::CompressionCodec::type EnumUtil::FromString<duckdb_parquet::format::CompressionCodec::type>(
+    const char *value) {
 	if (StringUtil::Equals(value, "UNCOMPRESSED")) {
 		return CompressionCodec::UNCOMPRESSED;
 	}
@@ -1048,17 +1056,17 @@ std::string ParquetExtension::Name() {
 	return "parquet";
 }
 
-} // namespace duckdb
+}  // namespace duckdb
 
 #ifdef DUCKDB_BUILD_LOADABLE_EXTENSION
 extern "C" {
 
-DUCKDB_EXTENSION_API void parquet_init(duckdb::DatabaseInstance &db) { // NOLINT
+DUCKDB_EXTENSION_API void parquet_init(duckdb::DatabaseInstance &db) {  // NOLINT
 	duckdb::DuckDB db_wrapper(db);
 	db_wrapper.LoadExtension<duckdb::ParquetExtension>();
 }
 
-DUCKDB_EXTENSION_API const char *parquet_version() { // NOLINT
+DUCKDB_EXTENSION_API const char *parquet_version() {  // NOLINT
 	return duckdb::DuckDB::LibraryVersion();
 }
 }

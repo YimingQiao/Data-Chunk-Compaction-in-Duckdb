@@ -136,7 +136,7 @@ bool Pipeline::ScheduleParallel(shared_ptr<Event> &event) {
 	idx_t max_threads = 1;
 	idx_t kMultiThread = 32;
 
-	// Hash Table Partition
+	// Hash Table Partition & build
 	if ((source->GetName() == "SEQ_SCAN " || source->GetName() == "READ_PARQUET ") && sink->GetName() == "HASH_JOIN" &&
 	    operators.empty()) {
 		max_threads = 32;
@@ -145,7 +145,7 @@ bool Pipeline::ScheduleParallel(shared_ptr<Event> &event) {
 	// Hash Table Probing for left deep tree
 	if ((source->GetName() == "SEQ_SCAN " || source->GetName() == "READ_PARQUET ") &&
 	    sink->GetName() == "EXPLAIN_ANALYZE" && !operators.empty()) {
-		max_threads = 64;
+		max_threads = 96;
 	}
 
 	if (source->GetName() == "BREAKER") {
@@ -159,7 +159,7 @@ bool Pipeline::ScheduleParallel(shared_ptr<Event> &event) {
 	// Hash Table Probing for Next Hash Table Building
 	if ((source->GetName() == "SEQ_SCAN " || source->GetName() == "READ_PARQUET ") && sink->GetName() == "HASH_JOIN" &&
 	    !operators.empty()) {
-		max_threads = 32;
+		max_threads = 64;
 	}
 
 	if (sink->GetName() != "BATCH_CREATE_TABLE_AS") {

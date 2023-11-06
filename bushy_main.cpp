@@ -41,23 +41,34 @@ int main() {
 
 	// Or, leave tables in disk, we create the views
 	{
-		con.Query("CREATE VIEW student AS SELECT * FROM read_parquet('/public/yiming/student.parquet');");
-		con.Query("CREATE VIEW department AS SELECT * FROM read_parquet('/public/yiming/department.parquet');");
-		con.Query("CREATE VIEW room AS SELECT * FROM read_parquet('/public/yiming/room.parquet');");
-		con.Query("CREATE VIEW type AS SELECT * FROM read_parquet('/public/yiming/type.parquet');");
+		// con.Query("CREATE VIEW student AS SELECT * FROM read_parquet('student.parquet');");
+		con.Query("CREATE VIEW department AS SELECT * FROM read_parquet('department.parquet');");
+		// con.Query("CREATE VIEW room AS SELECT * FROM read_parquet('room.parquet');");
+		con.Query("CREATE VIEW type AS SELECT * FROM read_parquet('type.parquet');");
 	}
 	duckdb::BeeProfiler::Get().Clear();
 
+	// export to S3, in parquet format
 	//	{
 	//		con.Query("SET s3_region='ap-southeast-1';");
-	//		con.Query("SET s3_access_key_id='AKIARZ5TMPGJP7QVU57H';");
-	//		con.Query("SET s3_secret_access_key='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';");
-	//		auto res = con.Query("CREATE TABLE room AS SELECT * FROM read_parquet('s3://parquets/room.parquet');");
-	//		if (res->HasError())
-	//			std::cerr << res->GetError() << "\n";
-	//		else
-	//			std::cout << res->ToString() << "\n";
+	//		con.Query("SET s3_access_key_id='AKIARZ5TMPGJAWWRWZYB';");
+	//		con.Query("SET s3_secret_access_key='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';");
+	//
+	//		con.Query("COPY student TO 's3://parquets/student.parquet';");
+	//		con.Query("COPY department TO 's3://parquets/department.parquet';");
+	//		con.Query("COPY room TO 's3://parquets/room.parquet';");
+	//		con.Query("COPY type TO 's3://parquets/type.parquet';");
 	//	}
+
+	// Or, leave tables in S3, we create the views
+	{
+		con.Query("SET s3_region='ap-southeast-1';");
+		con.Query("SET s3_access_key_id='xxxx';");
+		con.Query("SET s3_secret_access_key='xxxx';");
+
+		con.Query("CREATE VIEW student AS SELECT * FROM read_parquet('s3://parquets/student.parquet');");
+		con.Query("CREATE VIEW room AS SELECT * FROM read_parquet('s3://parquets/room.parquet');");
+	}
 
 	// ------------------------------------------ Query -----------------------------------------------------
 
@@ -69,33 +80,33 @@ int main() {
 		    "FROM student, department, room, type "
 		    "WHERE student.stu_id = room.stu_id AND student.major_id = department.major_id AND room.type = type.type;";
 
-		for (size_t i = 0; i < 5; ++i) {
-			auto result = con.Query(seq_sql_join);
-
-			duckdb::BeeProfiler::Get().EndProfiling();
-			std::cerr << "----------------------------------------------------------\n";
-
-			if (i >= 3) {
-				if (!result->HasError()) {
-					std::string plan = result->GetValue(1, 0).ToString();
-					std::cerr << plan << "\n";
-					// std::cerr << result->ToString() << "\n";
-				} else {
-					std::cerr << result->GetError() << "\n";
-				}
-			}
-		}
+		//		for (size_t i = 0; i < 5; ++i) {
+		//			auto result = con.Query(seq_sql_join);
+		//
+		//			duckdb::BeeProfiler::Get().EndProfiling();
+		//			std::cerr << "----------------------------------------------------------\n";
+		//
+		//			if (i >= 3) {
+		//				if (!result->HasError()) {
+		//					std::string plan = result->GetValue(1, 0).ToString();
+		//					std::cerr << plan << "\n";
+		//					// std::cerr << result->ToString() << "\n";
+		//				} else {
+		//					std::cerr << result->GetError() << "\n";
+		//				}
+		//			}
+		//		}
 	}
 
 	// BUSHY join query
 	{
 		std::string bushy_sql_join =
 		    "EXPLAIN ANALYZE "
-		    "SELECT t2.stu_id, t2.major_id, t1.type, t1.room_id "
+		    "SELECT t1.stu_id, t1.major_id, t2.type, t2.room_id "
 		    "FROM "
-		    "(SELECT room.stu_id, room.room_id, type.type FROM room INNER JOIN type ON room.type = type.type) AS t1, "
 		    "(SELECT student.stu_id, department.major_id "
-		    "FROM student, department WHERE student.major_id = department.major_id) AS t2, "
+		    "FROM student, department WHERE student.major_id = department.major_id) AS t1, "
+		    "(SELECT room.stu_id, room.room_id, type.type FROM room INNER JOIN type ON room.type = type.type) AS t2, "
 		    "WHERE t1.stu_id = t2.stu_id;";
 
 		for (size_t i = 0; i < 5; ++i) {
@@ -149,7 +160,7 @@ int main() {
 	return 0;
 }
 void GenDatabase(duckdb::Connection &con) {
-	std::vector<std::string> sql_create = {"CREATE TABLE student (stu_id INTEGER, major_id INTEGER);",
+	std::vector<std::string> sql_create = {"CREATE TABLE student (stu_id INTEGER, major_id INTEGER, age TINYINT);",
 	                                       "CREATE TABLE department(major_id INTEGER, name VARCHAR);"
 	                                       "CREATE TABLE room (room_id INTEGER, stu_id INTEGER, type INTEGER);"
 	                                       "CREATE TABLE type (type INTEGER, info VARCHAR);"};
@@ -174,7 +185,8 @@ void GenDatabase(duckdb::Connection &con) {
 		std::string sql_insert = "INSERT INTO student VALUES ";
 		for (uint64_t i = 0; i < stu_n; i++) {
 			uint64_t major_id = mt() % major_n;
-			sql_insert += "(" + std::to_string(i) + ", " + std::to_string(major_id) + ")";
+			uint16_t age = mt() % 100;
+			sql_insert += "(" + std::to_string(i) + ", " + std::to_string(major_id) + ", " + std::to_string(age) + ")";
 			if (i != stu_n - 1) sql_insert += ", ";
 
 			if (i % (5 * stu_n / 100) == 0) {
@@ -245,9 +257,11 @@ void GenDatabase(duckdb::Connection &con) {
 		}
 		std::cout << "Type table inserted\n";
 	}
-	// We export the tables in parquet format, separately.
-	con.Query("COPY student TO 'student.parquet' (FORMAT PARQUET);");
-	con.Query("COPY department TO 'department.parquet' (FORMAT PARQUET);");
-	con.Query("COPY room TO 'room.parquet' (FORMAT PARQUET);");
-	con.Query("COPY type TO 'type.parquet' (FORMAT PARQUET);");
+	// We export the tables to disk in parquet format, separately.
+	{
+		con.Query("COPY student TO 'student.parquet' (FORMAT PARQUET);");
+		con.Query("COPY department TO 'department.parquet' (FORMAT PARQUET);");
+		con.Query("COPY room TO 'room.parquet' (FORMAT PARQUET);");
+		con.Query("COPY type TO 'type.parquet' (FORMAT PARQUET);");
+	}
 }
