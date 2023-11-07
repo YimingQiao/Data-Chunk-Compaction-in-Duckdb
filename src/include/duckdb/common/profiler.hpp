@@ -147,7 +147,7 @@ public:
 		return instance;
 	}
 
-	void InsertRecord(string name, double time) {
+	void InsertTimeRecord(string name, double time) {
 		std::lock_guard<std::mutex> lock(mtx);
 		if (times_.count(name) == 0) {
 			times_[name] = time;
@@ -158,12 +158,20 @@ public:
 		}
 	}
 
+	void InsertHTRecord(string name, size_t tuple_sz, size_t point_table_sz, size_t num_terms) {
+		std::lock_guard<std::mutex> lock(mtx);
+		if (ht_records_.count(name) == 0) {
+			ht_records_[name] = HTInfo(tuple_sz, point_table_sz, num_terms);
+		}
+	}
+
 	void EndProfiling() {
 		PrintResults();
 		Clear();
 	}
 
 	void PrintResults() const {
+		// -------------------------------- Print Timing Results --------------------------------
 		// Extract keys from the unordered_map and store in a vector
 		std::vector<std::string> keys;
 		for (const auto &pair : times_) {
@@ -185,17 +193,43 @@ public:
 			std::cerr << "Total: " << time << " s\tCalls: " << calling_times << "\tAvg: " << avg << " s\t" << key
 			          << '\n';
 		}
+		// -------------------------------- Print HT Results --------------------------------
+		std::vector<string> ht_keys;
+		for (const auto &pair : ht_records_) {
+			ht_keys.push_back(pair.first);
+		}
+
+		std::sort(ht_keys.begin(), ht_keys.end());
+
+		std::cerr << "\n";
+		for (const auto &key : ht_keys) {
+			auto ht_info = ht_records_.at(key);
+			std::cerr << "Tuples Size: " << (double)ht_info.tuple_size / (1 << 20) << " MB\t"
+			          << "Point Size: " << (double)ht_info.point_table_size / (1 << 20) << " MB\t"
+			          << "#Term: " << ht_info.num_terms << "\t" << key << '\n';
+		}
 	}
 
 	void Clear() {
 		std::lock_guard<std::mutex> lock(mtx);
 		times_.clear();
 		calling_times_.clear();
+		ht_records_.clear();
 	}
 
 private:
-	unordered_map<std::string, double> times_;
+	unordered_map<string, double> times_;
 	unordered_map<string, size_t> calling_times_;
+
+	struct HTInfo {
+		size_t tuple_size;
+		size_t point_table_size;
+		size_t num_terms;
+
+		HTInfo(size_t ts = 0, size_t pts = 0, size_t nt = 0) : tuple_size(ts), point_table_size(pts), num_terms(nt) {
+		}
+	};
+	unordered_map<string, HTInfo> ht_records_;
 	mutable std::mutex mtx;
 };
 }  // namespace duckdb

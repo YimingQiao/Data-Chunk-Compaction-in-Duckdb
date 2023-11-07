@@ -132,8 +132,8 @@ static void TableScanFunc(ClientContext &context, TableFunctionInput &data_p, Da
 			Profiler profiler;
 			profiler.Start();
 			storage.Scan(transaction, output, state.scan_state);
-			BeeProfiler::Get().InsertRecord("[TableScan - " + TableScanToString(&bind_data) + " - Scan]",
-			                                profiler.Elapsed());
+			BeeProfiler::Get().InsertTimeRecord("[TableScan - " + TableScanToString(&bind_data) + " - Scan]",
+			                                    profiler.Elapsed());
 		}
 		if (output.size() > 0) {
 			return;
@@ -142,8 +142,8 @@ static void TableScanFunc(ClientContext &context, TableFunctionInput &data_p, Da
 		profiler.Start();
 		bool ret = TableScanParallelStateNext(context, data_p.bind_data.get(), data_p.local_state.get(),
 		                                      data_p.global_state.get());
-		BeeProfiler::Get().InsertRecord("[TableScan - " + TableScanToString(&bind_data) + " - Mutex]",
-		                                profiler.Elapsed());
+		BeeProfiler::Get().InsertTimeRecord("[TableScan - " + TableScanToString(&bind_data) + " - Mutex]",
+		                                    profiler.Elapsed());
 		if (!ret) {
 			return;
 		}

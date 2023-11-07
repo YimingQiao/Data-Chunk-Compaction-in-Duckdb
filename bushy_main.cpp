@@ -5,7 +5,7 @@
 
 const bool kGenerateData = false;
 
-//	"CREATE TABLE student (stu_id INTEGER, major_id INTEGER);",
+//	"CREATE TABLE student (stu_id INTEGER, major_id INTEGER, age TINYINT);",
 //  "CREATE TABLE department(major_id INTEGER, name VARCHAR);"
 //  "CREATE TABLE room (room_id INTEGER, stu_id INTEGER, type INTEGER);"
 //  "CREATE TABLE type (type INTEGER, info VARCHAR);"
@@ -48,8 +48,8 @@ int main() {
 	}
 	duckdb::BeeProfiler::Get().Clear();
 
-	std::string s3_access_key_id = "xxxx";
-	std::string s3_access_key = "xxx";
+	std::string s3_access_key_id = "AKIARZ5TMPGJHQ4PFLDP";
+	std::string s3_access_key = "+uSXS1yGwBP+wfoaqJrQ71/Mu7WPZbUNABDy2c0h";
 
 	// export to S3, in parquet format
 	//	{
@@ -162,6 +162,7 @@ int main() {
 
 	return 0;
 }
+
 void GenDatabase(duckdb::Connection &con) {
 	std::vector<std::string> sql_create = {"CREATE TABLE student (stu_id INTEGER, major_id INTEGER, age TINYINT);",
 	                                       "CREATE TABLE department(major_id INTEGER, name VARCHAR);"

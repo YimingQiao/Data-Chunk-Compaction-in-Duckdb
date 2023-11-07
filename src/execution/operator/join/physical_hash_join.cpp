@@ -210,9 +210,9 @@ SinkResultType PhysicalHashJoin::Sink(ExecutionContext &context, DataChunk &chun
 		ht.Build(lstate.append_state, lstate.join_keys, lstate.build_chunk);
 	}
 
-	BeeProfiler::Get().InsertRecord("[HashJoin - (1) Partition Table - " + conditions[0].left->GetName() + "=" +
-	                                    conditions[0].right->GetName() + "]",
-	                                profiler.Elapsed());
+	BeeProfiler::Get().InsertTimeRecord("[HashJoin - (1) Partition Table - " + conditions[0].left->GetName() + "=" +
+	                                        conditions[0].right->GetName() + "]",
+	                                    profiler.Elapsed());
 
 	return SinkResultType::NEED_MORE_INPUT;
 }
@@ -254,10 +254,10 @@ public:
 		sink.hash_table->Finalize(chunk_idx_from, chunk_idx_to, parallel);
 		event->FinishTask();
 
-		BeeProfiler::Get().InsertRecord("[HashJoin - (2) Build Table - " +
-		                                    sink.hash_table->conditions[0].left->GetName() + "=" +
-		                                    sink.hash_table->conditions[0].right->GetName() + "]",
-		                                profiler.Elapsed());
+		BeeProfiler::Get().InsertTimeRecord("[HashJoin - (2) Build Table - " +
+		                                        sink.hash_table->conditions[0].left->GetName() + "=" +
+		                                        sink.hash_table->conditions[0].right->GetName() + "]",
+		                                    profiler.Elapsed());
 		return TaskExecutionResult::TASK_FINISHED;
 	}
 
@@ -484,6 +484,12 @@ unique_ptr<OperatorState> PhysicalHashJoin::GetOperatorState(ExecutionContext &c
 		sink.InitializeProbeSpill();
 	}
 
+	// yiqiao: record the size of hash table
+	auto &ht = sink.hash_table;
+	BeeProfiler::Get().InsertHTRecord(
+	    "<Hash Table - " + ht->conditions[0].left->GetName() + "=" + ht->conditions[0].right->GetName() + ">",
+	    ht->SizeInBytes(), ht->PointerTableSize(ht->Count()), sink.hash_table->Count());
+
 	return std::move(state);
 }
 
@@ -544,7 +550,7 @@ OperatorResultType PhysicalHashJoin::ExecuteInternal(ExecutionContext &context, 
 	}
 	state.scan_structure->Next(state.join_keys, input, chunk);
 
-	BeeProfiler::Get().InsertRecord(
+	BeeProfiler::Get().InsertTimeRecord(
 	    "[HashJoin - (3) Probe Table - " + conditions[0].left->GetName() + "=" + conditions[0].right->GetName() + "]",
 	    profiler.Elapsed());
 	return OperatorResultType::HAVE_MORE_OUTPUT;

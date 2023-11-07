@@ -269,7 +269,7 @@ void LocalFileSystem::Read(FileHandle &handle, void *buffer, int64_t nr_bytes, i
 		Profiler profiler;
 		profiler.Start();
 		int64_t bytes_read = pread(fd, read_buffer, nr_bytes, location);
-		BeeProfiler::Get().InsertRecord("{LocalFileSystem::Read} pread", profiler.Elapsed());
+		BeeProfiler::Get().InsertTimeRecord("{LocalFileSystem::Read} pread", profiler.Elapsed());
 
 		if (bytes_read == -1) {
 			throw IOException("Could not read from file \"%s\": %s", handle.path, strerror(errno));
