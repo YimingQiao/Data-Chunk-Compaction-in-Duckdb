@@ -48,11 +48,14 @@ int main() {
 	}
 	duckdb::BeeProfiler::Get().Clear();
 
+	std::string s3_access_key_id = "xxxx";
+	std::string s3_access_key = "xxx";
+
 	// export to S3, in parquet format
 	//	{
 	//		con.Query("SET s3_region='ap-southeast-1';");
-	//		con.Query("SET s3_access_key_id='AKIARZ5TMPGJAWWRWZYB';");
-	//		con.Query("SET s3_secret_access_key='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';");
+	//		con.Query("SET s3_access_key_id=" + s3_access_key_id + ";");
+	//		con.Query("SET s3_secret_access_key=" + s3_access_key + ";"
 	//
 	//		con.Query("COPY student TO 's3://parquets/student.parquet';");
 	//		con.Query("COPY department TO 's3://parquets/department.parquet';");
@@ -63,8 +66,8 @@ int main() {
 	// Or, leave tables in S3, we create the views
 	{
 		con.Query("SET s3_region='ap-southeast-1';");
-		con.Query("SET s3_access_key_id='xxxx';");
-		con.Query("SET s3_secret_access_key='xxxx';");
+		con.Query("SET s3_access_key_id=" + s3_access_key_id + ";");
+		con.Query("SET s3_secret_access_key=" + s3_access_key + ";");
 
 		con.Query("CREATE VIEW student AS SELECT * FROM read_parquet('s3://parquets/student.parquet');");
 		con.Query("CREATE VIEW room AS SELECT * FROM read_parquet('s3://parquets/room.parquet');");
