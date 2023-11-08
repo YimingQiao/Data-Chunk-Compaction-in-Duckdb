@@ -30,8 +30,6 @@ struct TableScanLocalState : public LocalTableFunctionState {
 	TableScanState scan_state;
 	//! The DataChunk containing all read columns (even filter columns that are immediately removed)
 	DataChunk all_columns;
-	//! Spike Timing for table scan
-	SpikeProfiler spike_profiler;
 };
 
 static storage_t GetStorageIndex(TableCatalogEntry &table, column_t column_id) {

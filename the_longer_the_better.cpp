@@ -1,9 +1,11 @@
+#include <valgrind/callgrind.h>
+
 #include <iostream>
 
 #include "duckdb.hpp"
 
 int main() {
-	std::string db_name = "";
+	std::string db_name = "student_uncompressed.db";
 	duckdb::DuckDB db(db_name);
 	duckdb::Connection con(db);
 
@@ -21,10 +23,10 @@ int main() {
 	// loading table into memory, using the temp table (to make sure the data is in memory, even if DuckDB is not
 	// in in-memory mode.)
 	{
-		con.Query("CREATE TEMPORARY TABLE student AS SELECT * FROM read_parquet('student.parquet');");
-		con.Query("CREATE TEMPORARY TABLE department AS SELECT * FROM read_parquet('department.parquet');");
-		con.Query("CREATE TEMPORARY TABLE room AS SELECT * FROM read_parquet('room.parquet');");
-		con.Query("CREATE TEMPORARY TABLE type AS SELECT * FROM read_parquet('type.parquet');");
+		//		con.Query("CREATE TEMPORARY TABLE student AS SELECT * FROM read_parquet('student.parquet');");
+		//		con.Query("CREATE TEMPORARY TABLE department AS SELECT * FROM read_parquet('department.parquet');");
+		//		con.Query("CREATE TEMPORARY TABLE room AS SELECT * FROM read_parquet('room.parquet');");
+		//		con.Query("CREATE TEMPORARY TABLE type AS SELECT * FROM read_parquet('type.parquet');");
 	}
 	// Or, leave tables in disk, we create the views
 	//	{
@@ -46,15 +48,19 @@ int main() {
 		std::string query =
 		    "EXPLAIN ANALYZE "
 		    "SELECT student.stu_id, student.major_id, room.room_id, room.type "
-		    "FROM student, room WHERE student.stu_id = room.stu_id;";
+		    "FROM student, room WHERE student.stu_id = room.stu_id AND student.stu_id < 50000000 AND room.stu_id < "
+		    "50000000;";
 
-		for (size_t i = 0; i < 5; ++i) {
+		for (size_t i = 0; i < 1; ++i) {
+			CALLGRIND_START_INSTRUMENTATION;
 			auto result = con.Query(query);
+			CALLGRIND_STOP_INSTRUMENTATION;
+			CALLGRIND_DUMP_STATS;
 
 			duckdb::BeeProfiler::Get().EndProfiling();
 			std::cerr << "----------------------------------------------------------\n";
 
-			if (i >= 3) {
+			if (i >= 0) {
 				if (!result->HasError()) {
 					std::string plan = result->GetValue(1, 0).ToString();
 					std::cerr << plan << "\n";

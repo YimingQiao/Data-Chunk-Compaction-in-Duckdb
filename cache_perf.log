@@ -1,0 +1,70 @@
+ Tuples Size: 1192.09 MB Point Size: 1024 MB     #Term: 50000000 <Hash Table - stu_id=stu_id>
+ Performance counter stats for './the_longer_the_better':
+
+     5,059,088,750      L1-dcache-load-misses     #   15.57% of all L1-dcache accesses
+    32,497,226,215      L1-dcache-loads
+       589,023,825      LLC-load-misses           #   65.54% of all LL-cache accesses
+       898,774,787      LLC-loads
+     1,070,072,121      cache-misses              #   41.281 % of all cache refs
+     2,592,177,277      cache-references
+
+      11.736465526 seconds time elapsed
+
+      84.434542000 seconds user
+      88.471382000 seconds sys
+ LLC-load-misses / L1-dcache-loads: 1.8%
+ LLC-loads / L1-dcache-loads: 2.7%
+
+
+ Tuples Size: 119.209 MB Point Size: 128 MB      #Term: 5000000  <Hash Table - stu_id=stu_id>
+ Performance counter stats for './the_longer_the_better':
+
+       499,975,949      L1-dcache-load-misses     #   15.02% of all L1-dcache accesses
+     3,329,648,061      L1-dcache-loads
+        39,882,597      LLC-load-misses           #   54.09% of all LL-cache accesses
+        73,739,048      LLC-loads
+        80,044,640      cache-misses              #   35.079 % of all cache refs
+       228,182,626      cache-references
+
+       1.241273275 seconds time elapsed
+
+       8.574603000 seconds user
+       4.196724000 seconds sys
+  LLC-load-misses / L1-dcache-loads: 1.17%
+  LLC-loads / L1-dcache-loads: 2.1%
+
+
+ Tuples Size: 11.9209 MB Point Size: 8 MB        #Term: 500000   <Hash Table - stu_id=stu_id>
+ Performance counter stats for './the_longer_the_better':
+
+        45,239,845      L1-dcache-load-misses     #    5.94% of all L1-dcache accesses
+       761,888,956      L1-dcache-loads
+           820,831      LLC-load-misses           #   15.50% of all LL-cache accesses
+         5,296,041      LLC-loads
+         6,888,213      cache-misses              #   16.888 % of all cache refs
+        40,786,664      cache-references
+
+       0.544971937 seconds time elapsed
+
+       0.861833000 seconds user
+       1.406398000 seconds sys
+  LLC-load-misses / L1-dcache-loads: 0.11%
+  LLC-loads / L1-dcache-loads: 0.65%
+
+
+ Tuples Size: 1.19209 MB Point Size: 1 MB        #Term: 50000    <Hash Table - stu_id=stu_id>
+ Performance counter stats for './the_longer_the_better':
+
+        21,569,999      L1-dcache-load-misses     #    7.30% of all L1-dcache accesses
+       295,475,449      L1-dcache-loads
+           325,289      LLC-load-misses           #    7.60% of all LL-cache accesses
+         4,279,705      LLC-loads
+         3,472,072      cache-misses              #   12.944 % of all cache refs
+        26,823,390      cache-references
+
+       0.320819806 seconds time elapsed
+
+       0.441127000 seconds user
+       1.120166000 seconds sys
+ LLC-load-misses / L1-dcache-loads: 0.11%
+ LLC-loads / l1-dcache-loads: 1.35%
