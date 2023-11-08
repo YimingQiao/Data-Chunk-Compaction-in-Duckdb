@@ -45,22 +45,23 @@ int main() {
 	// ------------------------------------ Query -------------------------------------------------
 	// A query with a very long probing pipeline.
 	{
-		std::string base =
-		    "SELECT student.stu_id, student.major_id, room.room_id, room.type "
-		    "FROM student, room WHERE student.stu_id = room.stu_id AND student.stu_id < 500000 AND "
-		    "room.stu_id < 500000";
 		std::string joins =
-		    "SELECT t1.stu_id, t1.major_id, t2.room_id, t2.type FROM (" + base +
-		    ") AS t1, room AS t2 WHERE t1.stu_id = t2.stu_id AND t1.room_id = t2.room_id AND t1.type = t2.type";
+		    "SELECT student.stu_id, student.major_id, room.room_id, room.type "
+		    "FROM student, room WHERE student.stu_id = room.stu_id AND room.room_id < 5000000";
+		for (size_t i = 0; i < 3; i++) {
+			joins = "SELECT t1.stu_id, t1.major_id, t2.room_id, t2.type FROM (" + joins +
+			        ") AS t1, room AS t2 WHERE t1.stu_id = t2.stu_id AND t1.room_id = t2.room_id AND t1.type = t2.type";
+		}
+
 		std::string query = "EXPLAIN ANALYZE " + joins + ";";
 
-		for (size_t i = 0; i < 1; ++i) {
+		for (size_t i = 0; i < 10; ++i) {
 			auto result = con.Query(query);
 
 			duckdb::BeeProfiler::Get().EndProfiling();
 			std::cerr << "----------------------------------------------------------\n";
 
-			if (i >= 0) {
+			if (i >= 9) {
 				if (!result->HasError()) {
 					std::string plan = result->GetValue(1, 0).ToString();
 					std::cerr << plan << "\n";

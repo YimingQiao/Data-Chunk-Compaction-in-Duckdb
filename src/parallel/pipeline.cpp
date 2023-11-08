@@ -139,13 +139,13 @@ bool Pipeline::ScheduleParallel(shared_ptr<Event> &event) {
 	// Hash Table Partition & build
 	if ((source->GetName() == "SEQ_SCAN " || source->GetName() == "READ_PARQUET ") && sink->GetName() == "HASH_JOIN" &&
 	    operators.empty()) {
-		max_threads = 32;
+		max_threads = 4;
 	}
 
 	// Hash Table Probing for left deep tree
 	if ((source->GetName() == "SEQ_SCAN " || source->GetName() == "READ_PARQUET ") &&
 	    sink->GetName() == "EXPLAIN_ANALYZE" && !operators.empty()) {
-		max_threads = 96;
+		max_threads = 1;
 	}
 
 	if (source->GetName() == "BREAKER") {

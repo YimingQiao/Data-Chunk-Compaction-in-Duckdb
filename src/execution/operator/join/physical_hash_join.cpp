@@ -183,6 +183,7 @@ unique_ptr<LocalSinkState> PhysicalHashJoin::GetLocalSinkState(ExecutionContext 
 
 SinkResultType PhysicalHashJoin::Sink(ExecutionContext &context, DataChunk &chunk, OperatorSinkInput &input) const {
 	auto &lstate = input.local_state.Cast<HashJoinLocalSinkState>();
+	auto &sink = input.global_state.Cast<HashJoinGlobalSinkState>();
 
 	Profiler profiler;
 	profiler.Start();
@@ -210,9 +211,19 @@ SinkResultType PhysicalHashJoin::Sink(ExecutionContext &context, DataChunk &chun
 		ht.Build(lstate.append_state, lstate.join_keys, lstate.build_chunk);
 	}
 
-	BeeProfiler::Get().InsertTimeRecord("[HashJoin - (1) Partition Table - " + conditions[0].left->GetName() + "=" +
-	                                        conditions[0].right->GetName() + "]",
-	                                    profiler.Elapsed());
+	const void *address = static_cast<const void *>(sink.hash_table.get());
+	std::stringstream ss;
+	ss << address;
+	string name = "[HashJoin " + ss.str() + " - (1) Partition Table - ";
+	for (size_t i = 0; i < conditions.size(); ++i) {
+		auto &con = conditions[i];
+		name += con.left->GetName() + "=" + con.right->GetName();
+		if (i != conditions.size() - 1)
+			name += ", ";
+		else
+			name += "]";
+	}
+	BeeProfiler::Get().InsertTimeRecord(name, profiler.Elapsed());
 
 	return SinkResultType::NEED_MORE_INPUT;
 }
@@ -254,10 +265,21 @@ public:
 		sink.hash_table->Finalize(chunk_idx_from, chunk_idx_to, parallel);
 		event->FinishTask();
 
-		BeeProfiler::Get().InsertTimeRecord("[HashJoin - (2) Build Table - " +
-		                                        sink.hash_table->conditions[0].left->GetName() + "=" +
-		                                        sink.hash_table->conditions[0].right->GetName() + "]",
-		                                    profiler.Elapsed());
+		auto &ht = sink.hash_table;
+		const void *address = static_cast<const void *>(ht.get());
+		std::stringstream ss;
+		ss << address;
+		string name = "[HashJoin " + ss.str() + " - (2) Build Table - ";
+		for (size_t i = 0; i < ht->conditions.size(); ++i) {
+			auto &con = ht->conditions[i];
+			name += con.left->GetName() + "=" + con.right->GetName();
+			if (i != ht->conditions.size() - 1)
+				name += ", ";
+			else
+				name += "]";
+		}
+		BeeProfiler::Get().InsertTimeRecord(name, profiler.Elapsed());
+
 		return TaskExecutionResult::TASK_FINISHED;
 	}
 
@@ -562,9 +584,20 @@ OperatorResultType PhysicalHashJoin::ExecuteInternal(ExecutionContext &context, 
 	}
 	state.scan_structure->Next(state.join_keys, input, chunk);
 
-	BeeProfiler::Get().InsertTimeRecord(
-	    "[HashJoin - (3) Probe Table - " + conditions[0].left->GetName() + "=" + conditions[0].right->GetName() + "]",
-	    profiler.Elapsed());
+	const void *address = static_cast<const void *>(sink.hash_table.get());
+	std::stringstream ss;
+	ss << address;
+	string name = "[HashJoin " + ss.str() + " - (3) Probe Table - ";
+	for (size_t i = 0; i < conditions.size(); ++i) {
+		auto &con = conditions[i];
+		name += con.left->GetName() + "=" + con.right->GetName();
+		if (i != conditions.size() - 1)
+			name += ", ";
+		else
+			name += "]";
+	}
+	BeeProfiler::Get().InsertTimeRecord(name, profiler.Elapsed());
+
 	return OperatorResultType::HAVE_MORE_OUTPUT;
 }
 
