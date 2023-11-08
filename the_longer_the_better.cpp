@@ -45,17 +45,17 @@ int main() {
 	// ------------------------------------ Query -------------------------------------------------
 	// A query with a very long probing pipeline.
 	{
-		std::string query =
-		    "EXPLAIN ANALYZE "
+		std::string base =
 		    "SELECT student.stu_id, student.major_id, room.room_id, room.type "
-		    "FROM student, room WHERE student.stu_id = room.stu_id AND student.stu_id < 50000000 AND room.stu_id < "
-		    "50000000;";
+		    "FROM student, room WHERE student.stu_id = room.stu_id AND student.stu_id < 500000 AND "
+		    "room.stu_id < 500000";
+		std::string joins =
+		    "SELECT t1.stu_id, t1.major_id, t2.room_id, t2.type FROM (" + base +
+		    ") AS t1, room AS t2 WHERE t1.stu_id = t2.stu_id AND t1.room_id = t2.room_id AND t1.type = t2.type";
+		std::string query = "EXPLAIN ANALYZE " + joins + ";";
 
 		for (size_t i = 0; i < 1; ++i) {
-			CALLGRIND_START_INSTRUMENTATION;
 			auto result = con.Query(query);
-			CALLGRIND_STOP_INSTRUMENTATION;
-			CALLGRIND_DUMP_STATS;
 
 			duckdb::BeeProfiler::Get().EndProfiling();
 			std::cerr << "----------------------------------------------------------\n";

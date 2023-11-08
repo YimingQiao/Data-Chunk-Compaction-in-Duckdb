@@ -486,9 +486,21 @@ unique_ptr<OperatorState> PhysicalHashJoin::GetOperatorState(ExecutionContext &c
 
 	// yiqiao: record the size of hash table
 	auto &ht = sink.hash_table;
-	BeeProfiler::Get().InsertHTRecord(
-	    "<Hash Table - " + ht->conditions[0].left->GetName() + "=" + ht->conditions[0].right->GetName() + ">",
-	    ht->SizeInBytes(), ht->PointerTableSize(ht->Count()), sink.hash_table->Count());
+	// transform hash table address to string
+	const void *address = static_cast<const void *>(ht.get());
+	std::stringstream ss;
+	ss << address;
+	string ht_name = "<Hash Table " + ss.str() + " - ";
+	for (size_t i = 0; i < ht->conditions.size(); ++i) {
+		auto &con = ht->conditions[i];
+		ht_name += con.left->GetName() + "=" + con.right->GetName();
+		if (i != ht->conditions.size() - 1)
+			ht_name += ", ";
+		else
+			ht_name += ">";
+	}
+	BeeProfiler::Get().InsertHTRecord(ht_name, ht->SizeInBytes(), ht->PointerTableSize(ht->Count()),
+	                                  sink.hash_table->Count());
 
 	return std::move(state);
 }
