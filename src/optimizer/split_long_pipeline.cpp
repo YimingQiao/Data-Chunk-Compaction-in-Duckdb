@@ -10,7 +10,7 @@ unique_ptr<LogicalOperator> SplitPipelineOptimizer::Rewrite(unique_ptr<duckdb::L
 			num_left_joins += 1;
 
 			// if the number of left joins is 2 or more, we break the pipeline to ensure hash table can be cached.
-			if (num_left_joins >= 7 && op->children[0]->type != LogicalOperatorType::LOGICAL_GET) {
+			if (num_left_joins >= 2 && op->children[0]->type != LogicalOperatorType::LOGICAL_GET) {
 				auto breaker = make_uniq<LogicalPipelineBreaker>();
 				breaker->children.push_back(move(op->children[0]));
 				op->children[0] = move(breaker);

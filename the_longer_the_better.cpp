@@ -46,13 +46,14 @@ int main() {
 	// A query with a very long probing pipeline.
 	{
 		std::string joins =
-		    "SELECT student.stu_id, student.major_id, room.room_id, room.type "
-		    "FROM student, room WHERE student.stu_id = room.stu_id "
-		    "AND room.room_id < 10000000000";
-		for (size_t i = 0; i < 3; i++) {
-			joins = "SELECT t1.stu_id, t1.room_id, t1.type, t2.major_id, t2.name FROM (" + joins +
-			        ") AS t1, department AS t2 WHERE t1.major_id = t2.major_id AND t2.major_id < 2000000000";
-		}
+		    "SELECT student.stu_id, student.major_id, t2.room_id, t2.type "
+		    "FROM student, room AS t2 WHERE student.stu_id = t2.stu_id AND t2.stu_id < 5000000";
+
+		joins = "SELECT t1.stu_id, t1.type, t2.major_id FROM (" + joins +
+		        ") AS t1, department AS t2 WHERE t1.major_id = t2.major_id";
+		joins = "SELECT t1.stu_id, t1.major_id, t2.type FROM (" + joins + ") AS t1, type AS t2 WHERE t1.type = t2.type";
+		joins = "SELECT t1.stu_id, t1.type, t2.major_id, t2.name FROM (" + joins +
+		        ") AS t1, department AS t2 WHERE t1.major_id = t2.major_id";
 
 		std::string query = "EXPLAIN ANALYZE " + joins + ";";
 
@@ -60,7 +61,7 @@ int main() {
 			auto result = con.Query(query);
 
 			duckdb::BeeProfiler::Get().EndProfiling();
-			std::cerr << "----------------------------------------------------------\n";
+			std::cerr << "-----------------------------------------------------------------------------------------\n";
 
 			if (i >= 1) {
 				if (!result->HasError()) {

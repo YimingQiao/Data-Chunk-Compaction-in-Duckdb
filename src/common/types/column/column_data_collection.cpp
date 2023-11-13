@@ -743,7 +743,7 @@ void ColumnDataCollection::Append(ColumnDataAppendState &state, DataChunk &input
 			}
 			chunk_data.count += append_amount;
 
-			BeeProfiler::Get().InsertTimeRecord("{ColumnDataCollection::Append} copy_functions.function",
+			BeeProfiler::Get().InsertStatRecord("{ColumnDataCollection::Append} copy_functions.function",
 			                                    profiler.Elapsed());
 		}
 		remaining -= append_amount;

@@ -43,7 +43,7 @@ duckdb::SinkResultType PhysicalPipelineBreaker::Sink(duckdb::ExecutionContext &c
 	Profiler profiler;
 	profiler.Start();
 	{ lstate.intermediate_table->Append(lstate.append_state, chunk); }
-	BeeProfiler::Get().InsertTimeRecord("[PhysicalPipelineBreaker::Sink] append", profiler.Elapsed());
+	BeeProfiler::Get().InsertStatRecord("[PhysicalPipelineBreaker::Sink] append", profiler.Elapsed());
 	return SinkResultType::NEED_MORE_INPUT;
 }
 
@@ -98,7 +98,7 @@ SourceResultType PhysicalPipelineBreaker::GetData(ExecutionContext &context, Dat
 	std::lock_guard<std::mutex> lock(sink.glock);
 	sink.intermediate_table->Scan(sink.scan_state, chunk);
 
-	BeeProfiler::Get().InsertTimeRecord("[PhysicalPipelineBreaker::GetData] scan", profiler.Elapsed());
+	BeeProfiler::Get().InsertStatRecord("[PhysicalPipelineBreaker::GetData] scan", profiler.Elapsed());
 
 	return chunk.size() == 0 ? SourceResultType::FINISHED : SourceResultType::HAVE_MORE_OUTPUT;
 }

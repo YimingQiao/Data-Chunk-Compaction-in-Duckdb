@@ -445,7 +445,7 @@ public:
 				MultiFileReader::FinalizeChunk(bind_data.reader_bind, data.reader->reader_data, output);
 			}
 
-			BeeProfiler::Get().InsertTimeRecord("[Parquet - Scan - " + data.reader->file_name + "]",
+			BeeProfiler::Get().InsertStatRecord("[Parquet - Scan - " + data.reader->file_name + "]",
 			                                    profiler.Elapsed());
 
 			bind_data.chunk_count++;
@@ -456,7 +456,7 @@ public:
 			if (!ParquetParallelStateNext(context, bind_data, data, gstate)) {
 				return;
 			}
-			BeeProfiler::Get().InsertTimeRecord("[Parquet - Mutex - " + data.reader->file_name + "]",
+			BeeProfiler::Get().InsertStatRecord("[Parquet - Mutex - " + data.reader->file_name + "]",
 			                                    profiler.Elapsed());
 		} while (true);
 	}

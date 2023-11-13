@@ -225,7 +225,7 @@ SinkResultType PhysicalHashJoin::Sink(ExecutionContext &context, DataChunk &chun
 	}
 
 	string name = "[HashJoin - (1) Partition - " + sink.ht_name + "]";
-	BeeProfiler::Get().InsertTimeRecord(name, profiler.Elapsed());
+	BeeProfiler::Get().InsertStatRecord(name, profiler.Elapsed());
 	return SinkResultType::NEED_MORE_INPUT;
 }
 
@@ -277,7 +277,7 @@ public:
 			if (i != ht->conditions.size() - 1) name += ", ";
 		}
 		name += " - " + ss.str() + "]";
-		BeeProfiler::Get().InsertTimeRecord(name, profiler.Elapsed());
+		BeeProfiler::Get().InsertStatRecord(name, profiler.Elapsed());
 		return TaskExecutionResult::TASK_FINISHED;
 	}
 
@@ -535,13 +535,13 @@ OperatorResultType PhysicalHashJoin::ExecuteInternal(ExecutionContext &context, 
 	}
 
 	if (sink.hash_table->Count() == 0 && EmptyResultIfRHSIsEmpty()) {
-		BeeProfiler::Get().InsertTimeRecord(name, profiler.Elapsed());
+		BeeProfiler::Get().InsertStatRecord(name, profiler.Elapsed());
 		return OperatorResultType::FINISHED;
 	}
 
 	if (sink.perfect_join_executor) {
 		D_ASSERT(!sink.external);
-		BeeProfiler::Get().InsertTimeRecord(name, profiler.Elapsed());
+		BeeProfiler::Get().InsertStatRecord(name, profiler.Elapsed());
 		return sink.perfect_join_executor->ProbePerfectHashTable(context, input, chunk, *state.perfect_hash_join_state);
 	}
 
@@ -549,12 +549,13 @@ OperatorResultType PhysicalHashJoin::ExecuteInternal(ExecutionContext &context, 
 		// still have elements remaining (i.e. we got >STANDARD_VECTOR_SIZE elements in the previous probe)
 		state.scan_structure->Next(state.join_keys, input, chunk);
 		if (chunk.size() > 0) {
-			BeeProfiler::Get().InsertTimeRecord(name, profiler.Elapsed());
+			BeeProfiler::Get().InsertStatRecord(name + " - Have Remaining Elements #Tuple", chunk.size());
+			BeeProfiler::Get().InsertStatRecord(name + " - Have Remaining Elements", profiler.Elapsed());
 			return OperatorResultType::HAVE_MORE_OUTPUT;
 		}
 		state.scan_structure = nullptr;
 
-		BeeProfiler::Get().InsertTimeRecord(name, profiler.Elapsed());
+		BeeProfiler::Get().InsertStatRecord(name + " - No Remaining", profiler.Elapsed());
 		return OperatorResultType::NEED_MORE_INPUT;
 	}
 
@@ -562,7 +563,7 @@ OperatorResultType PhysicalHashJoin::ExecuteInternal(ExecutionContext &context, 
 	if (sink.hash_table->Count() == 0) {
 		ConstructEmptyJoinResult(sink.hash_table->join_type, sink.hash_table->has_null, input, chunk);
 
-		BeeProfiler::Get().InsertTimeRecord(name, profiler.Elapsed());
+		BeeProfiler::Get().InsertStatRecord(name, profiler.Elapsed());
 		return OperatorResultType::NEED_MORE_INPUT;
 	}
 
@@ -579,7 +580,8 @@ OperatorResultType PhysicalHashJoin::ExecuteInternal(ExecutionContext &context, 
 	}
 	state.scan_structure->Next(state.join_keys, input, chunk);
 
-	BeeProfiler::Get().InsertTimeRecord(name, profiler.Elapsed());
+	BeeProfiler::Get().InsertStatRecord(name + " #Tuple", chunk.size());
+	BeeProfiler::Get().InsertStatRecord(name, profiler.Elapsed());
 	return OperatorResultType::HAVE_MORE_OUTPUT;
 }
 

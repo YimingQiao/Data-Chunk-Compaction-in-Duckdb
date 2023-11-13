@@ -273,7 +273,7 @@ void TupleDataCollection::Build(TupleDataPinState &pin_state, TupleDataChunkStat
 	count += append_count;
 	Verify();
 
-	BeeProfiler::Get().InsertTimeRecord("{TupleDataCollection::build}", profiler.Elapsed());
+	BeeProfiler::Get().InsertStatRecord("{TupleDataCollection::build}", profiler.Elapsed());
 }
 
 // LCOV_EXCL_START

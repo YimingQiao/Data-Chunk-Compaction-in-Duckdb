@@ -56,12 +56,22 @@ public:
 		return instance;
 	}
 
-	void InsertTimeRecord(string name, double time) {
-		if (times_.find(name) == times_.end()) {
-			times_[name] = time;
+	void InsertStatRecord(string name, double value) {
+		if (values_.find(name) == values_.end()) {
+			values_[name] = value;
 			calling_times_[name] = 1;
 		} else {
-			times_[name].fetch_add(time * 1e9, std::memory_order_relaxed);
+			values_[name].fetch_add(value * 1e9, std::memory_order_relaxed);
+			calling_times_[name].fetch_add(1, std::memory_order_relaxed);
+		}
+	}
+
+	void InsertStatRecord(string name, size_t value) {
+		if (values_.find(name) == values_.end()) {
+			values_[name] = value;
+			calling_times_[name] = 1;
+		} else {
+			values_[name].fetch_add(value, std::memory_order_relaxed);
 			calling_times_[name].fetch_add(1, std::memory_order_relaxed);
 		}
 	}
@@ -82,7 +92,7 @@ public:
 		// -------------------------------- Print Timing Results --------------------------------
 		// Extract keys from the unordered_map and store in a vector
 		std::vector<std::string> keys;
-		for (const auto &pair : times_) {
+		for (const auto &pair : values_) {
 			keys.push_back(pair.first);
 		}
 
@@ -90,18 +100,34 @@ public:
 		std::sort(keys.begin(), keys.end());
 
 		// Print the results in alphabetical order
-		std::cerr << "                            [Execution Timing]\n";
+		std::cerr << "-------\n";
 		for (const auto &key : keys) {
 			if (key.find("TableScan") != std::string::npos && key.find("in_mem") == std::string::npos) {
 				continue;
 			}
-			double time = times_.at(key) / double(1e9);
+			if (key.find("#Tuple") != std::string::npos) {
+				continue;
+			}
+			double time = values_.at(key) / double(1e9);
 			size_t calling_times = calling_times_.at(key);
 			double avg = time / calling_times;
 
 			std::cerr << "Total: " << time << " s\tCalls: " << calling_times << "\tAvg: " << avg << " s\t" << key
 			          << '\n';
 		}
+		// -------------------------------- Print HT Results --------------------------------
+		std::cerr << "-------\n";
+		for (const auto &key : keys) {
+			if (key.find("#Tuple") != std::string::npos) {
+				size_t total_tuples = values_.at(key);
+				size_t calling_times = calling_times_.at(key);
+				double avg = total_tuples / double(calling_times);
+
+				std::cerr << "Total: " << total_tuples << "\tCalls: " << calling_times << "\tAvg: " << avg << "\t"
+				          << key << '\n';
+			}
+		}
+
 		// -------------------------------- Print HT Results --------------------------------
 		std::vector<string> ht_keys;
 		for (const auto &pair : ht_records_) {
@@ -110,7 +136,7 @@ public:
 
 		std::sort(ht_keys.begin(), ht_keys.end());
 
-		std::cerr << "                            [Hash Table Size]\n";
+		std::cerr << "-------\n";
 		for (const auto &key : ht_keys) {
 			auto ht_info = ht_records_.at(key);
 			std::cerr << "Tuples Size: " << (double)ht_info.tuple_size / (1 << 20) << " MB\t"
@@ -121,13 +147,13 @@ public:
 
 	void Clear() {
 		std::lock_guard<std::mutex> lock(mtx);
-		times_.clear();
+		values_.clear();
 		calling_times_.clear();
 		ht_records_.clear();
 	}
 
 private:
-	unordered_map<string, std::atomic<size_t>> times_;
+	unordered_map<string, std::atomic<size_t>> values_;
 	unordered_map<string, std::atomic<size_t>> calling_times_;
 
 	struct HTInfo {
