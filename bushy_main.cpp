@@ -32,19 +32,19 @@ int main() {
 	// ---------------------------------------- Load Data --------------------------------------------------
 	// loading table into memory, using the temp table (so that we are sure the data is in memory, even if DuckDB is not
 	// in in-memory mode.)
-	//	{
-	//		con.Query("CREATE TEMPORARY TABLE student AS SELECT * FROM read_parquet('student.parquet');");
-	//		con.Query("CREATE TEMPORARY TABLE department AS SELECT * FROM read_parquet('department.parquet');");
-	//		con.Query("CREATE TEMPORARY TABLE room AS SELECT * FROM read_parquet('room.parquet');");
-	//		con.Query("CREATE TEMPORARY TABLE type AS SELECT * FROM read_parquet('type.parquet');");
-	//	}
+	{
+		con.Query("CREATE TEMPORARY TABLE student AS SELECT * FROM read_parquet('student.parquet');");
+		con.Query("CREATE TEMPORARY TABLE department AS SELECT * FROM read_parquet('department.parquet');");
+		con.Query("CREATE TEMPORARY TABLE room AS SELECT * FROM read_parquet('room.parquet');");
+		con.Query("CREATE TEMPORARY TABLE type AS SELECT * FROM read_parquet('type.parquet');");
+	}
 
 	// Or, leave tables in disk, we create the views
 	{
 		// con.Query("CREATE VIEW student AS SELECT * FROM read_parquet('student.parquet');");
-		con.Query("CREATE VIEW department AS SELECT * FROM read_parquet('department.parquet');");
+		// con.Query("CREATE VIEW department AS SELECT * FROM read_parquet('department.parquet');");
 		// con.Query("CREATE VIEW room AS SELECT * FROM read_parquet('room.parquet');");
-		con.Query("CREATE VIEW type AS SELECT * FROM read_parquet('type.parquet');");
+		// con.Query("CREATE VIEW type AS SELECT * FROM read_parquet('type.parquet');");
 	}
 	duckdb::BeeProfiler::Get().Clear();
 
@@ -65,12 +65,12 @@ int main() {
 
 	// Or, leave tables in S3, we create the views
 	{
-		con.Query("SET s3_region='ap-southeast-1';");
-		con.Query("SET s3_access_key_id=" + s3_access_key_id + ";");
-		con.Query("SET s3_secret_access_key=" + s3_access_key + ";");
-
-		con.Query("CREATE VIEW student AS SELECT * FROM read_parquet('s3://parquets/student.parquet');");
-		con.Query("CREATE VIEW room AS SELECT * FROM read_parquet('s3://parquets/room.parquet');");
+		//		con.Query("SET s3_region='ap-southeast-1';");
+		//		con.Query("SET s3_access_key_id=" + s3_access_key_id + ";");
+		//		con.Query("SET s3_secret_access_key=" + s3_access_key + ";");
+		//
+		//		con.Query("CREATE VIEW student AS SELECT * FROM read_parquet('s3://parquets/student.parquet');");
+		//		con.Query("CREATE VIEW room AS SELECT * FROM read_parquet('s3://parquets/room.parquet');");
 	}
 
 	// ------------------------------------------ Query -----------------------------------------------------
@@ -83,22 +83,22 @@ int main() {
 		    "FROM student, department, room, type "
 		    "WHERE student.stu_id = room.stu_id AND student.major_id = department.major_id AND room.type = type.type;";
 
-		//		for (size_t i = 0; i < 5; ++i) {
-		//			auto result = con.Query(seq_sql_join);
-		//
-		//			duckdb::BeeProfiler::Get().EndProfiling();
-		//			std::cerr << "----------------------------------------------------------\n";
-		//
-		//			if (i >= 3) {
-		//				if (!result->HasError()) {
-		//					std::string plan = result->GetValue(1, 0).ToString();
-		//					std::cerr << plan << "\n";
-		//					// std::cerr << result->ToString() << "\n";
-		//				} else {
-		//					std::cerr << result->GetError() << "\n";
-		//				}
-		//			}
-		//		}
+		for (size_t i = 0; i < 2; ++i) {
+			auto result = con.Query(seq_sql_join);
+
+			duckdb::BeeProfiler::Get().EndProfiling();
+			std::cerr << "----------------------------------------------------------\n";
+
+			if (i >= 1) {
+				if (!result->HasError()) {
+					std::string plan = result->GetValue(1, 0).ToString();
+					std::cerr << plan << "\n";
+					// std::cerr << result->ToString() << "\n";
+				} else {
+					std::cerr << result->GetError() << "\n";
+				}
+			}
+		}
 	}
 
 	// BUSHY join query
@@ -112,13 +112,13 @@ int main() {
 		    "(SELECT room.stu_id, room.room_id, type.type FROM room INNER JOIN type ON room.type = type.type) AS t2, "
 		    "WHERE t1.stu_id = t2.stu_id;";
 
-		for (size_t i = 0; i < 5; ++i) {
+		for (size_t i = 0; i < 2; ++i) {
 			auto result = con.Query(bushy_sql_join);
 
 			duckdb::BeeProfiler::Get().EndProfiling();
 			std::cerr << "----------------------------------------------------------\n";
 
-			if (i >= 3) {
+			if (i >= 1) {
 				if (!result->HasError()) {
 					std::string plan = result->GetValue(1, 0).ToString();
 					std::cerr << plan << "\n";

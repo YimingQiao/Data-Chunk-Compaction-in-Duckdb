@@ -216,27 +216,26 @@ void PhysicalOperator::Verify() {
 
 bool CachingPhysicalOperator::CanCacheType(const LogicalType &type) {
 	switch (type.id()) {
-	case LogicalTypeId::LIST:
-	case LogicalTypeId::MAP:
-		return false;
-	case LogicalTypeId::STRUCT: {
-		auto &entries = StructType::GetChildTypes(type);
-		for (auto &entry : entries) {
-			if (!CanCacheType(entry.second)) {
-				return false;
+		case LogicalTypeId::LIST:
+		case LogicalTypeId::MAP:
+			return false;
+		case LogicalTypeId::STRUCT: {
+			auto &entries = StructType::GetChildTypes(type);
+			for (auto &entry : entries) {
+				if (!CanCacheType(entry.second)) {
+					return false;
+				}
 			}
+			return true;
 		}
-		return true;
-	}
-	default:
-		return true;
+		default:
+			return true;
 	}
 }
 
 CachingPhysicalOperator::CachingPhysicalOperator(PhysicalOperatorType type, vector<LogicalType> types_p,
                                                  idx_t estimated_cardinality)
     : PhysicalOperator(type, std::move(types_p), estimated_cardinality) {
-
 	caching_supported = true;
 	for (auto &col_type : types) {
 		if (!CanCacheType(col_type)) {
@@ -302,4 +301,4 @@ OperatorFinalizeResultType CachingPhysicalOperator::FinalExecute(ExecutionContex
 	return OperatorFinalizeResultType::FINISHED;
 }
 
-} // namespace duckdb
+}  // namespace duckdb

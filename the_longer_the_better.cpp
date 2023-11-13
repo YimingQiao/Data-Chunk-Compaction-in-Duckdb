@@ -22,12 +22,12 @@ int main() {
 	// ------------------------------------ Load Data -------------------------------------------------
 	// loading table into memory, using the temp table (to make sure the data is in memory, even if DuckDB is not
 	// in in-memory mode.)
-	{
-		//		con.Query("CREATE TEMPORARY TABLE student AS SELECT * FROM read_parquet('student.parquet');");
-		//		con.Query("CREATE TEMPORARY TABLE department AS SELECT * FROM read_parquet('department.parquet');");
-		//		con.Query("CREATE TEMPORARY TABLE room AS SELECT * FROM read_parquet('room.parquet');");
-		//		con.Query("CREATE TEMPORARY TABLE type AS SELECT * FROM read_parquet('type.parquet');");
-	}
+	//	{
+	//		con.Query("CREATE TEMPORARY TABLE student AS SELECT * FROM read_parquet('student.parquet');");
+	//		con.Query("CREATE TEMPORARY TABLE department AS SELECT * FROM read_parquet('department.parquet');");
+	//		con.Query("CREATE TEMPORARY TABLE room AS SELECT * FROM read_parquet('room.parquet');");
+	//		con.Query("CREATE TEMPORARY TABLE type AS SELECT * FROM read_parquet('type.parquet');");
+	//	}
 	// Or, leave tables in disk, we create the views
 	//	{
 	//		con.Query("CREATE VIEW student AS SELECT * FROM read_parquet('student.parquet');");
@@ -47,21 +47,22 @@ int main() {
 	{
 		std::string joins =
 		    "SELECT student.stu_id, student.major_id, room.room_id, room.type "
-		    "FROM student, room WHERE student.stu_id = room.stu_id AND room.room_id < 5000000";
+		    "FROM student, room WHERE student.stu_id = room.stu_id "
+		    "AND room.room_id < 10000000000";
 		for (size_t i = 0; i < 3; i++) {
-			joins = "SELECT t1.stu_id, t1.major_id, t2.room_id, t2.type FROM (" + joins +
-			        ") AS t1, room AS t2 WHERE t1.stu_id = t2.stu_id AND t1.room_id = t2.room_id AND t1.type = t2.type";
+			joins = "SELECT t1.stu_id, t1.room_id, t1.type, t2.major_id, t2.name FROM (" + joins +
+			        ") AS t1, department AS t2 WHERE t1.major_id = t2.major_id AND t2.major_id < 2000000000";
 		}
 
 		std::string query = "EXPLAIN ANALYZE " + joins + ";";
 
-		for (size_t i = 0; i < 10; ++i) {
+		for (size_t i = 0; i < 2; ++i) {
 			auto result = con.Query(query);
 
 			duckdb::BeeProfiler::Get().EndProfiling();
 			std::cerr << "----------------------------------------------------------\n";
 
-			if (i >= 9) {
+			if (i >= 1) {
 				if (!result->HasError()) {
 					std::string plan = result->GetValue(1, 0).ToString();
 					std::cerr << plan << "\n";
