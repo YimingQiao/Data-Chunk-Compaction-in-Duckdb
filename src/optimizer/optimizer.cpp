@@ -21,6 +21,7 @@
 #include "duckdb/optimizer/rule/equal_or_null_simplification.hpp"
 #include "duckdb/optimizer/rule/in_clause_simplification.hpp"
 #include "duckdb/optimizer/rule/list.hpp"
+#include "duckdb/optimizer/split_long_pipeline.hpp"
 #include "duckdb/optimizer/statistics_propagator.hpp"
 #include "duckdb/optimizer/topn_optimizer.hpp"
 #include "duckdb/optimizer/unnest_rewriter.hpp"
@@ -204,6 +205,11 @@ unique_ptr<LogicalOperator> Optimizer::Optimize(unique_ptr<LogicalOperator> plan
 		BushyOrderOptimizer bushy(context);
 		plan = bushy.Rewrite(std::move(plan));
 	});
+
+	//	RunOptimizer(OptimizerType::CACHE_HASH_TABLE, [&]() {
+	//		SplitPipelineOptimizer cache(context);
+	//		plan = cache.Rewrite(std::move(plan));
+	//	});
 
 	for (auto &optimizer_extension : DBConfig::GetConfig(context).optimizer_extensions) {
 		RunOptimizer(OptimizerType::EXTENSION, [&]() {

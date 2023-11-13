@@ -29,6 +29,7 @@ static DefaultOptimizerType internal_optimizer_types[] = {
     {"duplicate_groups", OptimizerType::DUPLICATE_GROUPS},
     {"reorder_filter", OptimizerType::REORDER_FILTER},
     {"join_order_bushy", OptimizerType::JOIN_ORDER_BUSHY},  // yiqiao
+    {"cache_hash_table", OptimizerType::CACHE_HASH_TABLE},  // yiqiao
     {"extension", OptimizerType::EXTENSION},
     {nullptr, OptimizerType::INVALID}};
 
