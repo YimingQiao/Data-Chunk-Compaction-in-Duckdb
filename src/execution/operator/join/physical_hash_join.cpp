@@ -51,7 +51,7 @@ PhysicalHashJoin::PhysicalHashJoin(LogicalOperator &op, unique_ptr<PhysicalOpera
 //===--------------------------------------------------------------------===//
 class HashJoinGlobalSinkState : public GlobalSinkState {
 public:
-	HashJoinGlobalSinkState(const PhysicalHashJoin &op, ClientContext &context_p)
+	HashJoinGlobalSinkState(const PhysicalHashJoin &op, ClientContext &context_p, string &conditions_str)
 	    : context(context_p), finalized(false), scanned_data(false) {
 		hash_table = op.InitializeHashTable(context);
 
@@ -64,6 +64,11 @@ public:
 		probe_types.insert(probe_types.end(), op.condition_types.begin(), op.condition_types.end());
 		probe_types.insert(probe_types.end(), payload_types.begin(), payload_types.end());
 		probe_types.emplace_back(LogicalType::HASH);
+		// yiqiao: get name of this hash join
+		const void *address = static_cast<const void *>(&hash_table);
+		std::stringstream ss;
+		ss << address;
+		ht_name = conditions_str + " - " + ss.str();
 	}
 
 	void ScheduleFinalize(Pipeline &pipeline, Event &event);
@@ -73,6 +78,8 @@ public:
 	ClientContext &context;
 	//! Global HT used by the join
 	unique_ptr<JoinHashTable> hash_table;
+	//! yiqiao: hash table name
+	string ht_name;
 	//! The perfect hash join executor (if any)
 	unique_ptr<PerfectHashJoinExecutor> perfect_join_executor;
 	//! Whether or not the hash table has been finalized
@@ -174,7 +181,13 @@ unique_ptr<JoinHashTable> PhysicalHashJoin::InitializeHashTable(ClientContext &c
 }
 
 unique_ptr<GlobalSinkState> PhysicalHashJoin::GetGlobalSinkState(ClientContext &context) const {
-	return make_uniq<HashJoinGlobalSinkState>(*this, context);
+	string conditions_str;
+	for (size_t i = 0; i < conditions.size(); ++i) {
+		auto &con = conditions[i];
+		conditions_str += con.left->GetName() + "=" + con.right->GetName();
+		if (i != conditions.size() - 1) conditions_str += ", ";
+	}
+	return make_uniq<HashJoinGlobalSinkState>(*this, context, conditions_str);
 }
 
 unique_ptr<LocalSinkState> PhysicalHashJoin::GetLocalSinkState(ExecutionContext &context) const {
@@ -211,20 +224,8 @@ SinkResultType PhysicalHashJoin::Sink(ExecutionContext &context, DataChunk &chun
 		ht.Build(lstate.append_state, lstate.join_keys, lstate.build_chunk);
 	}
 
-	const void *address = static_cast<const void *>(sink.hash_table.get());
-	std::stringstream ss;
-	ss << address;
-	string name = "[HashJoin " + ss.str() + " - (1) Partition Table - ";
-	for (size_t i = 0; i < conditions.size(); ++i) {
-		auto &con = conditions[i];
-		name += con.left->GetName() + "=" + con.right->GetName();
-		if (i != conditions.size() - 1)
-			name += ", ";
-		else
-			name += "]";
-	}
+	string name = "[HashJoin - (1) Partition - " + sink.ht_name + "]";
 	BeeProfiler::Get().InsertTimeRecord(name, profiler.Elapsed());
-
 	return SinkResultType::NEED_MORE_INPUT;
 }
 
@@ -269,17 +270,14 @@ public:
 		const void *address = static_cast<const void *>(ht.get());
 		std::stringstream ss;
 		ss << address;
-		string name = "[HashJoin " + ss.str() + " - (2) Build Table - ";
+		string name = "[HashJoin - (2) Build Table - ";
 		for (size_t i = 0; i < ht->conditions.size(); ++i) {
 			auto &con = ht->conditions[i];
 			name += con.left->GetName() + "=" + con.right->GetName();
-			if (i != ht->conditions.size() - 1)
-				name += ", ";
-			else
-				name += "]";
+			if (i != ht->conditions.size() - 1) name += ", ";
 		}
+		name += " - " + ss.str() + "]";
 		BeeProfiler::Get().InsertTimeRecord(name, profiler.Elapsed());
-
 		return TaskExecutionResult::TASK_FINISHED;
 	}
 
@@ -444,7 +442,9 @@ SinkFinalizeType PhysicalHashJoin::Finalize(Pipeline &pipeline, Event &event, Cl
 	}
 
 	// check for possible perfect hash table
-	auto use_perfect_hash = sink.perfect_join_executor->CanDoPerfectHashJoin();
+	// auto use_perfect_hash = sink.perfect_join_executor->CanDoPerfectHashJoin();
+	// yiqiao: disable the perfect hash
+	auto use_perfect_hash = false;
 	if (use_perfect_hash) {
 		D_ASSERT(ht.equality_types.size() == 1);
 		auto key_type = ht.equality_types[0];
@@ -508,22 +508,8 @@ unique_ptr<OperatorState> PhysicalHashJoin::GetOperatorState(ExecutionContext &c
 
 	// yiqiao: record the size of hash table
 	auto &ht = sink.hash_table;
-	// transform hash table address to string
-	const void *address = static_cast<const void *>(ht.get());
-	std::stringstream ss;
-	ss << address;
-	string ht_name = "<Hash Table " + ss.str() + " - ";
-	for (size_t i = 0; i < ht->conditions.size(); ++i) {
-		auto &con = ht->conditions[i];
-		ht_name += con.left->GetName() + "=" + con.right->GetName();
-		if (i != ht->conditions.size() - 1)
-			ht_name += ", ";
-		else
-			ht_name += ">";
-	}
-	BeeProfiler::Get().InsertHTRecord(ht_name, ht->SizeInBytes(), ht->PointerTableSize(ht->Count()),
-	                                  sink.hash_table->Count());
-
+	BeeProfiler::Get().InsertHTRecord("<Hash Join - " + sink.ht_name + ">", ht->SizeInBytes(),
+	                                  ht->PointerTableSize(ht->Count()), sink.hash_table->Count());
 	return std::move(state);
 }
 
@@ -534,6 +520,8 @@ OperatorResultType PhysicalHashJoin::ExecuteInternal(ExecutionContext &context, 
 	D_ASSERT(sink.finalized);
 	D_ASSERT(!sink.scanned_data);
 
+	// get name of this hash join
+	string name = "[HashJoin - (3) Probe Table - " + sink.ht_name + "]";
 	Profiler profiler;
 	profiler.Start();
 
@@ -547,11 +535,13 @@ OperatorResultType PhysicalHashJoin::ExecuteInternal(ExecutionContext &context, 
 	}
 
 	if (sink.hash_table->Count() == 0 && EmptyResultIfRHSIsEmpty()) {
+		BeeProfiler::Get().InsertTimeRecord(name, profiler.Elapsed());
 		return OperatorResultType::FINISHED;
 	}
 
 	if (sink.perfect_join_executor) {
 		D_ASSERT(!sink.external);
+		BeeProfiler::Get().InsertTimeRecord(name, profiler.Elapsed());
 		return sink.perfect_join_executor->ProbePerfectHashTable(context, input, chunk, *state.perfect_hash_join_state);
 	}
 
@@ -559,15 +549,20 @@ OperatorResultType PhysicalHashJoin::ExecuteInternal(ExecutionContext &context, 
 		// still have elements remaining (i.e. we got >STANDARD_VECTOR_SIZE elements in the previous probe)
 		state.scan_structure->Next(state.join_keys, input, chunk);
 		if (chunk.size() > 0) {
+			BeeProfiler::Get().InsertTimeRecord(name, profiler.Elapsed());
 			return OperatorResultType::HAVE_MORE_OUTPUT;
 		}
 		state.scan_structure = nullptr;
+
+		BeeProfiler::Get().InsertTimeRecord(name, profiler.Elapsed());
 		return OperatorResultType::NEED_MORE_INPUT;
 	}
 
 	// probe the HT
 	if (sink.hash_table->Count() == 0) {
 		ConstructEmptyJoinResult(sink.hash_table->join_type, sink.hash_table->has_null, input, chunk);
+
+		BeeProfiler::Get().InsertTimeRecord(name, profiler.Elapsed());
 		return OperatorResultType::NEED_MORE_INPUT;
 	}
 
@@ -584,20 +579,7 @@ OperatorResultType PhysicalHashJoin::ExecuteInternal(ExecutionContext &context, 
 	}
 	state.scan_structure->Next(state.join_keys, input, chunk);
 
-	const void *address = static_cast<const void *>(sink.hash_table.get());
-	std::stringstream ss;
-	ss << address;
-	string name = "[HashJoin " + ss.str() + " - (3) Probe Table - ";
-	for (size_t i = 0; i < conditions.size(); ++i) {
-		auto &con = conditions[i];
-		name += con.left->GetName() + "=" + con.right->GetName();
-		if (i != conditions.size() - 1)
-			name += ", ";
-		else
-			name += "]";
-	}
 	BeeProfiler::Get().InsertTimeRecord(name, profiler.Elapsed());
-
 	return OperatorResultType::HAVE_MORE_OUTPUT;
 }
 
@@ -996,6 +978,9 @@ SourceResultType PhysicalHashJoin::GetData(ExecutionContext &context, DataChunk 
 	auto &lstate = input.local_state.Cast<HashJoinLocalSourceState>();
 	sink.scanned_data = true;
 
+	Profiler profiler;
+	profiler.Start();
+
 	if (!sink.external && !IsRightOuterJoin(join_type)) {
 		return SourceResultType::FINISHED;
 	}
@@ -1014,7 +999,6 @@ SourceResultType PhysicalHashJoin::GetData(ExecutionContext &context, DataChunk 
 			gstate.TryPrepareNextStage(sink);
 		}
 	}
-
 	return chunk.size() == 0 ? SourceResultType::FINISHED : SourceResultType::HAVE_MORE_OUTPUT;
 }
 

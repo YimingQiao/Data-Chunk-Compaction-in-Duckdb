@@ -57,13 +57,12 @@ public:
 	}
 
 	void InsertTimeRecord(string name, double time) {
-		std::lock_guard<std::mutex> lock(mtx);
-		if (times_.count(name) == 0) {
+		if (times_.find(name) == times_.end()) {
 			times_[name] = time;
 			calling_times_[name] = 1;
 		} else {
-			times_[name] += time;
-			calling_times_[name] += 1;
+			times_[name].fetch_add(time * 1e9, std::memory_order_relaxed);
+			calling_times_[name].fetch_add(1, std::memory_order_relaxed);
 		}
 	}
 
@@ -96,7 +95,7 @@ public:
 			if (key.find("TableScan") != std::string::npos && key.find("in_mem") == std::string::npos) {
 				continue;
 			}
-			double time = times_.at(key);
+			double time = times_.at(key) / double(1e9);
 			size_t calling_times = calling_times_.at(key);
 			double avg = time / calling_times;
 
@@ -128,8 +127,8 @@ public:
 	}
 
 private:
-	unordered_map<string, double> times_;
-	unordered_map<string, size_t> calling_times_;
+	unordered_map<string, std::atomic<size_t>> times_;
+	unordered_map<string, std::atomic<size_t>> calling_times_;
 
 	struct HTInfo {
 		size_t tuple_size;
