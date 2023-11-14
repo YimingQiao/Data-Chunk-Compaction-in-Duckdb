@@ -11,6 +11,30 @@ const bool kGenerateData = false;
 //  "CREATE TABLE type (type INTEGER, info VARCHAR);"
 void GenDatabase(duckdb::Connection &con);
 
+void ExecuteQuery(duckdb::Connection &con, std::string query, size_t running_times, size_t showing_times) {
+	if (running_times < showing_times) {
+		std::cerr << "running_times < showing_times\n";
+		return;
+	}
+
+	for (size_t i = 0; i < running_times; ++i) {
+		auto result = con.Query(query);
+
+		duckdb::BeeProfiler::Get().EndProfiling();
+		std::cerr << "----------------------------------------------------------\n";
+
+		if (i >= running_times - showing_times) {
+			if (!result->HasError()) {
+				std::string plan = result->GetValue(1, 0).ToString();
+				std::cerr << plan << "\n";
+				// std::cerr << result->ToString() << "\n";
+			} else {
+				std::cerr << result->GetError() << "\n";
+			}
+		}
+	}
+}
+
 int main() {
 	// nullptr means in-memory database.
 	std::string db_name = "";
@@ -77,33 +101,18 @@ int main() {
 
 	// SEQ join query
 	{
-		std::string seq_sql_join =
+		std::string query =
 		    "EXPLAIN ANALYZE "
 		    "SELECT student.stu_id, department.major_id, room.room_id, type.type "
 		    "FROM student, department, room, type "
 		    "WHERE student.stu_id = room.stu_id AND student.major_id = department.major_id AND room.type = type.type;";
 
-		//		for (size_t i = 0; i < 2; ++i) {
-		//			auto result = con.Query(seq_sql_join);
-		//
-		//			duckdb::BeeProfiler::Get().EndProfiling();
-		//			std::cerr << "----------------------------------------------------------\n";
-		//
-		//			if (i >= 1) {
-		//				if (!result->HasError()) {
-		//					std::string plan = result->GetValue(1, 0).ToString();
-		//					std::cerr << plan << "\n";
-		//					// std::cerr << result->ToString() << "\n";
-		//				} else {
-		//					std::cerr << result->GetError() << "\n";
-		//				}
-		//			}
-		//		}
+		// ExecuteQuery(con, query, 2, 1);
 	}
 
 	// BUSHY join query
 	{
-		std::string bushy_sql_join =
+		std::string bushy_query =
 		    "EXPLAIN ANALYZE "
 		    "SELECT t1.stu_id, t1.major_id, t2.type, t2.room_id "
 		    "FROM "
@@ -112,109 +121,71 @@ int main() {
 		    "(SELECT room.stu_id, room.room_id, type.type FROM room INNER JOIN type ON room.type = type.type) AS t2, "
 		    "WHERE t1.stu_id = t2.stu_id;";
 
-		//		for (size_t i = 0; i < 2; ++i) {
-		//			auto result = con.Query(bushy_sql_join);
-		//
-		//			duckdb::BeeProfiler::Get().EndProfiling();
-		//			std::cerr << "----------------------------------------------------------\n";
-		//
-		//			if (i >= 1) {
-		//				if (!result->HasError()) {
-		//					std::string plan = result->GetValue(1, 0).ToString();
-		//					std::cerr << plan << "\n";
-		//					// std::cerr << result->ToString() << "\n";
-		//				} else {
-		//					std::cerr << result->GetError() << "\n";
-		//				}
-		//			}
-		//		}
+		// ExecuteQuery(bushy_query, 2, 1);
 	}
 
-	// SEQ (Right-Deep) join query
+	// I want to find the lock contension in the join building phase.
 	{
-		std::string right_deep_join =
-		    "EXPLAIN ANALYZE "
-		    "SELECT student.stu_id, student.major_id, t0.room_id, t0.type FROM student, "
-		    "(SELECT student.stu_id, t2.room_id, t2.type FROM student, "
-		    "(SELECT room.stu_id, room.room_id, t3.type FROM room, type AS t3 WHERE room.type = t3.type) "
-		    "AS t2 WHERE student.stu_id = t2.stu_id) "
-		    "AS t0 WHERE student.stu_id = t0.stu_id";
+		// Right-Deep
+		{
+			std::string right_deep_query =
+			    "EXPLAIN ANALYZE "
+			    "SELECT student.stu_id, student.major_id, t0.room_id, t0.type FROM student, "
+			    "(SELECT student.stu_id, t2.room_id, t2.type FROM student, "
+			    "(SELECT room.stu_id, room.room_id, t3.type FROM room, type AS t3 WHERE room.type = t3.type) "
+			    "AS t2 WHERE student.stu_id = t2.stu_id) "
+			    "AS t0 WHERE student.stu_id = t0.stu_id";
 
-		for (size_t i = 0; i < 2; ++i) {
-			auto result = con.Query(right_deep_join);
-
-			duckdb::BeeProfiler::Get().EndProfiling();
-			std::cerr << "----------------------------------------------------------\n";
-
-			if (i >= 1) {
-				if (!result->HasError()) {
-					std::string plan = result->GetValue(1, 0).ToString();
-					std::cerr << plan << "\n";
-					// std::cerr << result->ToString() << "\n";
-				} else {
-					std::cerr << result->GetError() << "\n";
-				}
-			}
+			ExecuteQuery(con, right_deep_query, 2, 1);
 		}
-	}
 
-	// BUSHY join plan for right-deep
-	{
-		std::string bushy_join =
-		    "EXPLAIN ANALYZE "
-		    "SELECT t1.stu_id, t1.major_id, t2.room_id, t2.type FROM "
-		    "(SELECT student.stu_id, t.major_id "
-		    "FROM student, student AS t WHERE student.stu_id = t.stu_id) AS t1, "
-		    "(SELECT room.stu_id, room.room_id, type.type FROM room INNER JOIN type ON room.type = type.type) AS t2, "
-		    "WHERE t1.stu_id = t2.stu_id;";
+		// BUSHY
+		{
+			std::string bushy_join =
+			    "EXPLAIN ANALYZE "
+			    "SELECT t1.stu_id, t1.major_id, t2.room_id, t2.type FROM "
+			    "(SELECT student.stu_id, t.major_id "
+			    "FROM student, student AS t WHERE student.stu_id = t.stu_id) AS t1, "
+			    "(SELECT room.stu_id, room.room_id, type.type FROM room INNER JOIN type ON room.type = type.type) AS "
+			    "t2 WHERE t1.stu_id = t2.stu_id;";
 
-		for (size_t i = 0; i < 2; ++i) {
-			auto result = con.Query(bushy_join);
+			ExecuteQuery(con, bushy_join, 2, 1);
+		}
 
-			duckdb::BeeProfiler::Get().EndProfiling();
-			std::cerr << "----------------------------------------------------------\n";
+		// Left-Deep
+		{
+			std::string query =
+			    "EXPLAIN ANALYZE "
+			    "SELECT student.stu_id, student.major_id, t0.room_id, t0.type FROM "
+			    "(SELECT student.stu_id, t2.room_id, t2.type FROM "
+			    "(SELECT room.stu_id, room.room_id, t3.type FROM room, type AS t3 WHERE room.type = t3.type) "
+			    "AS t2, student WHERE student.stu_id = t2.stu_id) "
+			    "AS t0, student WHERE student.stu_id = t0.stu_id";
 
-			if (i >= 1) {
-				if (!result->HasError()) {
-					std::string plan = result->GetValue(1, 0).ToString();
-					std::cerr << plan << "\n";
-					// std::cerr << result->ToString() << "\n";
-				} else {
-					std::cerr << result->GetError() << "\n";
-				}
-			}
+			ExecuteQuery(con, query, 2, 1);
 		}
 	}
 
 	// Left-deep join Bushy
-	//		{
-	//			std::string left_deep =
-	//			    "(SELECT student.stu_id, department.name, room.type, type.info FROM student, department, room, type
-	//" 			    "WHERE student.stu_id = room.stu_id AND student.major_id = department.major_id " "AND room.type
-	// = type.type)";
+	//	{
+	//		std::string left_deep =
+	//		    "(SELECT student.stu_id, department.name, room.type, type.info FROM student, department, room, type
+	// WHERE " 		    "student.stu_id = room.stu_id AND student.major_id = department.major_id AND room.type =
+	// type.type)";
 	//
-	//			for (size_t i = 0; i < 3; i++) {
-	//				left_deep = "(SELECT * FROM " + left_deep + " AS ls INNER JOIN student ON ls.stu_id =
-	// student.stu_id)";
-	//			}
-	//			left_deep = "(SELECT * FROM " + left_deep +
-	//			            " AS ls INNER JOIN student ON ls.stu_id = student.stu_id WHERE student.major_id <= 500000)";
-	//
-	//			std::string left_side = "(SELECT * FROM " + left_deep + " AS t)";
-	//			std::string right_side = "(SELECT * FROM " + left_deep + " ORDER BY stu_id LIMIT 1)";
-	//			std::string complex_join = "EXPLAIN ANALYZE SELECT * FROM " + left_side + " AS ls INNER JOIN " +
-	// right_side
-	//	+ 		                           " AS rs ON ls.stu_id = rs.stu_id;";
-	//
-	//			auto result = con.Query(complex_join);
-	//			if (!result->HasError()) {
-	//				std::string plan = result->GetValue(1, 0).ToString();
-	//				std::cerr << plan << "\n";
-	//				// std::cerr << result->ToString() << "\n";
-	//			} else {
-	//				std::cerr << result->GetError() << "\n";
-	//			}
+	//		for (size_t i = 0; i < 3; i++) {
+	//			left_deep = "(SELECT * FROM " + left_deep + " AS ls INNER JOIN student ON ls.stu_id = student.stu_id)";
 	//		}
+	//		left_deep = "(SELECT * FROM " + left_deep +
+	//		            " AS ls INNER JOIN student ON ls.stu_id = student.stu_id WHERE student.major_id <= 500000)";
+	//
+	//		std::string left_side = "(SELECT * FROM " + left_deep + " AS t)";
+	//		std::string right_side = "(SELECT * FROM " + left_deep + " ORDER BY stu_id LIMIT 1)";
+	//		std::string complex_join = "EXPLAIN ANALYZE SELECT * FROM " + left_side + " AS ls INNER JOIN " + right_side
+	//+ 		                           " AS rs ON ls.stu_id = rs.stu_id;";
+	//
+	//		ExecuteQuery(con, complex_join, 2, 1);
+	//	}
 
 	return 0;
 }
