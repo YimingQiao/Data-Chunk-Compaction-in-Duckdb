@@ -21,9 +21,9 @@ int main() {
 
 	// ------------------------------------ DuckDB Settings -------------------------------------------------
 	// set num of thread, we cannot use 128 threads because 2 threads are left for Perf.
-	{ con.Query("SET threads TO 126;"); }
+	{ con.Query("SET threads TO 102;"); }
 
-	// set the allocator flush threshold to 1GB
+	// set the allocator flush threshold
 	{ auto res = con.Query("SET allocator_flush_threshold=\"16gb\"; "); }
 
 	// disable the object cache
@@ -83,8 +83,65 @@ int main() {
 		    "FROM student, department, room, type "
 		    "WHERE student.stu_id = room.stu_id AND student.major_id = department.major_id AND room.type = type.type;";
 
+		//		for (size_t i = 0; i < 2; ++i) {
+		//			auto result = con.Query(seq_sql_join);
+		//
+		//			duckdb::BeeProfiler::Get().EndProfiling();
+		//			std::cerr << "----------------------------------------------------------\n";
+		//
+		//			if (i >= 1) {
+		//				if (!result->HasError()) {
+		//					std::string plan = result->GetValue(1, 0).ToString();
+		//					std::cerr << plan << "\n";
+		//					// std::cerr << result->ToString() << "\n";
+		//				} else {
+		//					std::cerr << result->GetError() << "\n";
+		//				}
+		//			}
+		//		}
+	}
+
+	// BUSHY join query
+	{
+		std::string bushy_sql_join =
+		    "EXPLAIN ANALYZE "
+		    "SELECT t1.stu_id, t1.major_id, t2.type, t2.room_id "
+		    "FROM "
+		    "(SELECT student.stu_id, department.major_id "
+		    "FROM student, department WHERE student.major_id = department.major_id) AS t1, "
+		    "(SELECT room.stu_id, room.room_id, type.type FROM room INNER JOIN type ON room.type = type.type) AS t2, "
+		    "WHERE t1.stu_id = t2.stu_id;";
+
+		//		for (size_t i = 0; i < 2; ++i) {
+		//			auto result = con.Query(bushy_sql_join);
+		//
+		//			duckdb::BeeProfiler::Get().EndProfiling();
+		//			std::cerr << "----------------------------------------------------------\n";
+		//
+		//			if (i >= 1) {
+		//				if (!result->HasError()) {
+		//					std::string plan = result->GetValue(1, 0).ToString();
+		//					std::cerr << plan << "\n";
+		//					// std::cerr << result->ToString() << "\n";
+		//				} else {
+		//					std::cerr << result->GetError() << "\n";
+		//				}
+		//			}
+		//		}
+	}
+
+	// SEQ (Right-Deep) join query
+	{
+		std::string right_deep_join =
+		    "EXPLAIN ANALYZE "
+		    "SELECT student.stu_id, student.major_id, t0.room_id, t0.type FROM student, "
+		    "(SELECT student.stu_id, t2.room_id, t2.type FROM student, "
+		    "(SELECT room.stu_id, room.room_id, t3.type FROM room, type AS t3 WHERE room.type = t3.type) "
+		    "AS t2 WHERE student.stu_id = t2.stu_id) "
+		    "AS t0 WHERE student.stu_id = t0.stu_id";
+
 		for (size_t i = 0; i < 2; ++i) {
-			auto result = con.Query(seq_sql_join);
+			auto result = con.Query(right_deep_join);
 
 			duckdb::BeeProfiler::Get().EndProfiling();
 			std::cerr << "----------------------------------------------------------\n";
@@ -101,19 +158,18 @@ int main() {
 		}
 	}
 
-	// BUSHY join query
+	// BUSHY join plan for right-deep
 	{
-		std::string bushy_sql_join =
+		std::string bushy_join =
 		    "EXPLAIN ANALYZE "
-		    "SELECT t1.stu_id, t1.major_id, t2.type, t2.room_id "
-		    "FROM "
-		    "(SELECT student.stu_id, department.major_id "
-		    "FROM student, department WHERE student.major_id = department.major_id) AS t1, "
+		    "SELECT t1.stu_id, t1.major_id, t2.room_id, t2.type FROM "
+		    "(SELECT student.stu_id, t.major_id "
+		    "FROM student, student AS t WHERE student.stu_id = t.stu_id) AS t1, "
 		    "(SELECT room.stu_id, room.room_id, type.type FROM room INNER JOIN type ON room.type = type.type) AS t2, "
 		    "WHERE t1.stu_id = t2.stu_id;";
 
 		for (size_t i = 0; i < 2; ++i) {
-			auto result = con.Query(bushy_sql_join);
+			auto result = con.Query(bushy_join);
 
 			duckdb::BeeProfiler::Get().EndProfiling();
 			std::cerr << "----------------------------------------------------------\n";
