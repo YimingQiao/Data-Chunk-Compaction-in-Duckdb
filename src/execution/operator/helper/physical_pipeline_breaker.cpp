@@ -19,15 +19,14 @@ PhysicalPipelineBreaker::~PhysicalPipelineBreaker() {
 class PipelineBreakerGlobalState : public GlobalSinkState {
 public:
 	std::mutex glock;
-	unique_ptr<ColumnDataCollection> intermediate_table;
-	ColumnDataScanState scan_state;
+	shared_ptr<ColumnDataCollection> intermediate_table;
+	ColumnDataParallelScanState scan_state;
 	bool initialized = false;
 };
 
 class PipelineBreakerLocalState : public LocalSinkState {
 public:
 	explicit PipelineBreakerLocalState(vector<LogicalType> types, ClientContext &context) {
-		// intermediate_table = make_uniq<ColumnDataCollection>(allocator, types);
 		intermediate_table = make_uniq<ColumnDataCollection>(Allocator::DefaultAllocator(), types);
 		intermediate_table->InitializeAppend(append_state);
 	}
@@ -83,9 +82,20 @@ unique_ptr<LocalSinkState> PhysicalPipelineBreaker::GetLocalSinkState(ExecutionC
 //===--------------------------------------------------------------------===//
 // Source
 //===--------------------------------------------------------------------===//
+class PipelineBreakerSourceState : public LocalSourceState {
+public:
+	ColumnDataLocalScanState local_scan_state;
+};
+
+unique_ptr<LocalSourceState> PhysicalPipelineBreaker::GetLocalSourceState(duckdb::ExecutionContext &context,
+                                                                          GlobalSourceState &gstate) const {
+	return make_uniq<PipelineBreakerSourceState>();
+}
+
 SourceResultType PhysicalPipelineBreaker::GetData(ExecutionContext &context, DataChunk &chunk,
                                                   OperatorSourceInput &input) const {
 	auto &sink = sink_state->Cast<PipelineBreakerGlobalState>();
+	auto &lstate = input.local_state.Cast<PipelineBreakerSourceState>();
 
 	if (!sink.initialized) {
 		sink.intermediate_table->InitializeScan(sink.scan_state);
@@ -94,10 +104,7 @@ SourceResultType PhysicalPipelineBreaker::GetData(ExecutionContext &context, Dat
 
 	Profiler profiler;
 	profiler.Start();
-
-	std::lock_guard<std::mutex> lock(sink.glock);
-	sink.intermediate_table->Scan(sink.scan_state, chunk);
-
+	sink.intermediate_table->Scan(sink.scan_state, lstate.local_scan_state, chunk);
 	BeeProfiler::Get().InsertStatRecord("[PhysicalPipelineBreaker::GetData] scan", profiler.Elapsed());
 
 	return chunk.size() == 0 ? SourceResultType::FINISHED : SourceResultType::HAVE_MORE_OUTPUT;
