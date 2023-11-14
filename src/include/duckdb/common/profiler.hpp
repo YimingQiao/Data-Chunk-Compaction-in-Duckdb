@@ -51,55 +51,51 @@ using Profiler = BaseProfiler<system_clock>;
 
 class BeeProfiler {
 public:
+	const static bool kEnableProfiling = false;
+
+public:
 	static BeeProfiler &Get() {
 		static BeeProfiler instance;
 		return instance;
 	}
 
 	void InsertStatRecord(string name, double value) {
-		if (values_.find(name) == values_.end()) {
-			values_[name] = value;
-			calling_times_[name] = 1;
-		} else {
-			values_[name].fetch_add(value * 1e9, std::memory_order_relaxed);
-			calling_times_[name].fetch_add(1, std::memory_order_relaxed);
-		}
+		InsertStatRecord(name, size_t(value * 1e9));
 	}
 
 	void InsertStatRecord(string name, size_t value) {
-		if (values_.find(name) == values_.end()) {
-			values_[name] = value;
-			calling_times_[name] = 1;
-		} else {
-			values_[name].fetch_add(value, std::memory_order_relaxed);
-			calling_times_[name].fetch_add(1, std::memory_order_relaxed);
+		if (kEnableProfiling) {
+			lock_guard<mutex> lock(mtx);
+			values_[name] += value;
+			calling_times_[name] += 1;
 		}
 	}
 
 	void InsertHTRecord(string name, size_t tuple_sz, size_t point_table_sz, size_t num_terms) {
-		std::lock_guard<std::mutex> lock(mtx);
-		if (ht_records_.count(name) == 0) {
-			ht_records_[name] = HTInfo(tuple_sz, point_table_sz, num_terms);
+		if (kEnableProfiling) {
+			std::lock_guard<std::mutex> lock(mtx);
+			if (ht_records_.count(name) == 0) {
+				ht_records_[name] = HTInfo(tuple_sz, point_table_sz, num_terms);
+			}
 		}
 	}
 
 	void EndProfiling() {
-		PrintResults();
-		Clear();
+		if (kEnableProfiling) {
+			PrintResults();
+			Clear();
+		}
 	}
 
 	void PrintResults() const {
+		lock_guard<mutex> lock(mtx);
+
 		// -------------------------------- Print Timing Results --------------------------------
-		// Extract keys from the unordered_map and store in a vector
 		std::vector<std::string> keys;
 		for (const auto &pair : values_) {
 			keys.push_back(pair.first);
 		}
-
-		// Sort the keys
 		std::sort(keys.begin(), keys.end());
-
-		// Print the results in alphabetical order
 		std::cerr << "-------\n";
 		for (const auto &key : keys) {
 			if (key.find("TableScan") != std::string::npos && key.find("in_mem") == std::string::npos) {
@@ -115,7 +111,6 @@ public:
 			std::cerr << "Total: " << time << " s\tCalls: " << calling_times << "\tAvg: " << avg << " s\t" << key
 			          << '\n';
 		}
-		// -------------------------------- Print HT Results --------------------------------
 		std::cerr << "-------\n";
 		for (const auto &key : keys) {
 			if (key.find("#Tuple") != std::string::npos) {
@@ -133,12 +128,11 @@ public:
 		for (const auto &pair : ht_records_) {
 			ht_keys.push_back(pair.first);
 		}
-
 		std::sort(ht_keys.begin(), ht_keys.end());
-
 		std::cerr << "-------\n";
 		for (const auto &key : ht_keys) {
 			auto ht_info = ht_records_.at(key);
+
 			std::cerr << "Tuples Size: " << (double)ht_info.tuple_size / (1 << 20) << " MB\t"
 			          << "Point Size: " << (double)ht_info.point_table_size / (1 << 20) << " MB\t"
 			          << "#Term: " << ht_info.num_terms << "\t" << key << '\n';
@@ -147,15 +141,13 @@ public:
 
 	void Clear() {
 		std::lock_guard<std::mutex> lock(mtx);
+
 		values_.clear();
 		calling_times_.clear();
 		ht_records_.clear();
 	}
 
 private:
-	unordered_map<string, std::atomic<size_t>> values_;
-	unordered_map<string, std::atomic<size_t>> calling_times_;
-
 	struct HTInfo {
 		size_t tuple_size;
 		size_t point_table_size;
@@ -164,6 +156,9 @@ private:
 		HTInfo(size_t ts = 0, size_t pts = 0, size_t nt = 0) : tuple_size(ts), point_table_size(pts), num_terms(nt) {
 		}
 	};
+
+	unordered_map<string, size_t> values_;
+	unordered_map<string, size_t> calling_times_;
 	unordered_map<string, HTInfo> ht_records_;
 	mutable std::mutex mtx;
 };
