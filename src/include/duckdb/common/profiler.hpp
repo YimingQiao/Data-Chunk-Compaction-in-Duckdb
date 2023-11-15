@@ -51,7 +51,7 @@ using Profiler = BaseProfiler<system_clock>;
 
 class BeeProfiler {
 public:
-	const static bool kEnableProfiling = true;
+	const static bool kEnableProfiling = false;
 
 public:
 	static BeeProfiler &Get() {
@@ -95,31 +95,33 @@ public:
 		for (const auto &pair : values_) {
 			keys.push_back(pair.first);
 		}
-		std::sort(keys.begin(), keys.end());
-		std::cerr << "-------\n";
-		for (const auto &key : keys) {
-			if (key.find("TableScan") != std::string::npos && key.find("in_mem") == std::string::npos) {
-				continue;
-			}
-			if (key.find("#Tuple") != std::string::npos) {
-				continue;
-			}
-			double time = values_.at(key) / double(1e9);
-			size_t calling_times = calling_times_.at(key);
-			double avg = time / calling_times;
-
-			std::cerr << "Total: " << time << " s\tCalls: " << calling_times << "\tAvg: " << avg << " s\t" << key
-			          << '\n';
-		}
-		std::cerr << "-------\n";
-		for (const auto &key : keys) {
-			if (key.find("#Tuple") != std::string::npos) {
-				size_t total_tuples = values_.at(key);
+		if (!keys.empty()) {
+			std::sort(keys.begin(), keys.end());
+			std::cerr << "-------\n";
+			for (const auto &key : keys) {
+				if (key.find("TableScan") != std::string::npos && key.find("in_mem") == std::string::npos) {
+					continue;
+				}
+				if (key.find("#Tuple") != std::string::npos) {
+					continue;
+				}
+				double time = values_.at(key) / double(1e9);
 				size_t calling_times = calling_times_.at(key);
-				double avg = total_tuples / double(calling_times);
+				double avg = time / calling_times;
 
-				std::cerr << "Total: " << total_tuples << "\tCalls: " << calling_times << "\tAvg: " << avg << "\t"
-				          << key << '\n';
+				std::cerr << "Total: " << time << " s\tCalls: " << calling_times << "\tAvg: " << avg << " s\t" << key
+				          << '\n';
+			}
+			std::cerr << "-------\n";
+			for (const auto &key : keys) {
+				if (key.find("#Tuple") != std::string::npos) {
+					size_t total_tuples = values_.at(key);
+					size_t calling_times = calling_times_.at(key);
+					double avg = total_tuples / double(calling_times);
+
+					std::cerr << "Total: " << total_tuples << "\tCalls: " << calling_times << "\tAvg: " << avg << "\t"
+					          << key << '\n';
+				}
 			}
 		}
 
@@ -128,14 +130,16 @@ public:
 		for (const auto &pair : ht_records_) {
 			ht_keys.push_back(pair.first);
 		}
-		std::sort(ht_keys.begin(), ht_keys.end());
-		std::cerr << "-------\n";
-		for (const auto &key : ht_keys) {
-			auto ht_info = ht_records_.at(key);
+		if (!ht_keys.empty()) {
+			std::cerr << "-------\n";
+			std::sort(ht_keys.begin(), ht_keys.end());
+			for (const auto &key : ht_keys) {
+				auto ht_info = ht_records_.at(key);
 
-			std::cerr << "Tuples Size: " << (double)ht_info.tuple_size / (1 << 20) << " MB\t"
-			          << "Point Size: " << (double)ht_info.point_table_size / (1 << 20) << " MB\t"
-			          << "#Term: " << ht_info.num_terms << "\t" << key << '\n';
+				std::cerr << "Tuples Size: " << (double)ht_info.tuple_size / (1 << 20) << " MB\t"
+				          << "Point Size: " << (double)ht_info.point_table_size / (1 << 20) << " MB\t"
+				          << "#Term: " << ht_info.num_terms << "\t" << key << '\n';
+			}
 		}
 	}
 
