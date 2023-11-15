@@ -308,7 +308,7 @@ public:
 		// yiqiao: modify the #thread for hash table building
 		// const idx_t num_threads = TaskScheduler::GetScheduler(context).NumberOfThreads();
 		const idx_t active_threads = TaskScheduler::GetScheduler(context).NumberOfThreads();
-		const idx_t num_threads = active_threads - 2;
+		const idx_t num_threads = active_threads / 2;
 		auto now = std::chrono::system_clock::now();
 		auto duration = now.time_since_epoch();
 		auto milliseconds = std::chrono::duration_cast<std::chrono::milliseconds>(duration).count() % 1000000;

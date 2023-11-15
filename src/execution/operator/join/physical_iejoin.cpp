@@ -1,5 +1,7 @@
 #include "duckdb/execution/operator/join/physical_iejoin.hpp"
 
+#include <thread>
+
 #include "duckdb/common/operator/comparison_operators.hpp"
 #include "duckdb/common/row_operations/row_operations.hpp"
 #include "duckdb/common/sort/sort.hpp"
@@ -12,8 +14,6 @@
 #include "duckdb/parallel/thread_context.hpp"
 #include "duckdb/planner/expression/bound_reference_expression.hpp"
 
-#include <thread>
-
 namespace duckdb {
 
 PhysicalIEJoin::PhysicalIEJoin(LogicalComparisonJoin &op, unique_ptr<PhysicalOperator> left,
@@ -21,7 +21,6 @@ PhysicalIEJoin::PhysicalIEJoin(LogicalComparisonJoin &op, unique_ptr<PhysicalOpe
                                idx_t estimated_cardinality)
     : PhysicalRangeJoin(op, PhysicalOperatorType::IE_JOIN, std::move(left), std::move(right), std::move(cond),
                         join_type, estimated_cardinality) {
-
 	// 1. let L1 (resp. L2) be the array of column X (resp. Y)
 	D_ASSERT(conditions.size() >= 2);
 	lhs_orders.resize(2);
@@ -41,16 +40,16 @@ PhysicalIEJoin::PhysicalIEJoin(LogicalComparisonJoin &op, unique_ptr<PhysicalOpe
 		// 4. if (op2 ∈ {>, ≥}) sort L2 in ascending order
 		// 5. else if (op2 ∈ {<, ≤}) sort L2 in descending order
 		switch (cond.comparison) {
-		case ExpressionType::COMPARE_GREATERTHAN:
-		case ExpressionType::COMPARE_GREATERTHANOREQUALTO:
-			sense = i ? OrderType::ASCENDING : OrderType::DESCENDING;
-			break;
-		case ExpressionType::COMPARE_LESSTHAN:
-		case ExpressionType::COMPARE_LESSTHANOREQUALTO:
-			sense = i ? OrderType::DESCENDING : OrderType::ASCENDING;
-			break;
-		default:
-			throw NotImplementedException("Unimplemented join type for IEJoin");
+			case ExpressionType::COMPARE_GREATERTHAN:
+			case ExpressionType::COMPARE_GREATERTHANOREQUALTO:
+				sense = i ? OrderType::ASCENDING : OrderType::DESCENDING;
+				break;
+			case ExpressionType::COMPARE_LESSTHAN:
+			case ExpressionType::COMPARE_LESSTHANOREQUALTO:
+				sense = i ? OrderType::DESCENDING : OrderType::ASCENDING;
+				break;
+			default:
+				throw NotImplementedException("Unimplemented join type for IEJoin");
 		}
 		lhs_orders[i].emplace_back(BoundOrderByNode(sense, OrderByNullType::NULLS_LAST, std::move(left)));
 		rhs_orders[i].emplace_back(BoundOrderByNode(sense, OrderByNullType::NULLS_LAST, std::move(right)));
@@ -83,7 +82,7 @@ public:
 	using GlobalSortedTable = PhysicalRangeJoin::GlobalSortedTable;
 
 public:
-	IEJoinGlobalState(ClientContext &context, const PhysicalIEJoin &op) : child(0) {
+	IEJoinGlobalState(ClientContext &context, const PhysicalIEJoin &op, string &conditions_str) : child(0) {
 		tables.resize(2);
 		RowLayout lhs_layout;
 		lhs_layout.Initialize(op.children[0]->types);
@@ -96,10 +95,19 @@ public:
 		vector<BoundOrderByNode> rhs_order;
 		rhs_order.emplace_back(op.rhs_orders[0][0].Copy());
 		tables[1] = make_uniq<GlobalSortedTable>(context, rhs_order, rhs_layout);
+
+		// yiqiao: get name of this hash join
+		const void *address = static_cast<const void *>(&tables);
+		std::stringstream ss;
+		ss << address;
+		ie_join_name = conditions_str + " - " + ss.str();
 	}
 
 	IEJoinGlobalState(IEJoinGlobalState &prev)
-	    : GlobalSinkState(prev), tables(std::move(prev.tables)), child(prev.child + 1) {
+	    : GlobalSinkState(prev),
+	      tables(std::move(prev.tables)),
+	      child(prev.child + 1),
+	      ie_join_name(prev.ie_join_name) {
 	}
 
 	void Sink(DataChunk &input, IEJoinLocalState &lstate) {
@@ -116,13 +124,21 @@ public:
 		}
 	}
 
+	string ie_join_name;
+
 	vector<unique_ptr<GlobalSortedTable>> tables;
 	size_t child;
 };
 
 unique_ptr<GlobalSinkState> PhysicalIEJoin::GetGlobalSinkState(ClientContext &context) const {
 	D_ASSERT(!sink_state);
-	return make_uniq<IEJoinGlobalState>(context, *this);
+	string conditions_str;
+	for (size_t i = 0; i < conditions.size(); ++i) {
+		auto &con = conditions[i];
+		conditions_str += con.left->GetName() + "=" + con.right->GetName();
+		if (i != conditions.size() - 1) conditions_str += ", ";
+	}
+	return make_uniq<IEJoinGlobalState>(context, *this, conditions_str);
 }
 
 unique_ptr<LocalSinkState> PhysicalIEJoin::GetLocalSinkState(ExecutionContext &context) const {
@@ -138,7 +154,10 @@ SinkResultType PhysicalIEJoin::Sink(ExecutionContext &context, DataChunk &chunk,
 	auto &gstate = input.global_state.Cast<IEJoinGlobalState>();
 	auto &lstate = input.local_state.Cast<IEJoinLocalState>();
 
+	Profiler profiler;
+	profiler.Start();
 	gstate.Sink(chunk, lstate);
+	BeeProfiler::Get().InsertStatRecord("[IEJoin - Sink - " + gstate.ie_join_name + "]", profiler.Elapsed());
 
 	return SinkResultType::NEED_MORE_INPUT;
 }
@@ -640,8 +659,12 @@ idx_t IEJoinUnion::JoinComplexBlocks(SelectionVector &lsel, SelectionVector &rse
 class IEJoinLocalSourceState : public LocalSourceState {
 public:
 	explicit IEJoinLocalSourceState(ClientContext &context, const PhysicalIEJoin &op)
-	    : op(op), true_sel(STANDARD_VECTOR_SIZE), left_executor(context), right_executor(context),
-	      left_matches(nullptr), right_matches(nullptr) {
+	    : op(op),
+	      true_sel(STANDARD_VECTOR_SIZE),
+	      left_executor(context),
+	      right_executor(context),
+	      left_matches(nullptr),
+	      right_matches(nullptr) {
 		auto &allocator = Allocator::Get(context);
 		unprojected.Initialize(allocator, op.unprojected_types);
 
@@ -792,7 +815,13 @@ void PhysicalIEJoin::ResolveComplexJoin(ExecutionContext &context, DataChunk &re
 class IEJoinGlobalSourceState : public GlobalSourceState {
 public:
 	explicit IEJoinGlobalSourceState(const PhysicalIEJoin &op)
-	    : op(op), initialized(false), next_pair(0), completed(0), left_outers(0), next_left(0), right_outers(0),
+	    : op(op),
+	      initialized(false),
+	      next_pair(0),
+	      completed(0),
+	      left_outers(0),
+	      next_left(0),
+	      right_outers(0),
 	      next_right(0) {
 	}
 
@@ -948,6 +977,9 @@ SourceResultType PhysicalIEJoin::GetData(ExecutionContext &context, DataChunk &r
 	auto &ie_gstate = input.global_state.Cast<IEJoinGlobalSourceState>();
 	auto &ie_lstate = input.local_state.Cast<IEJoinLocalSourceState>();
 
+	Profiler profiler;
+	profiler.Start();
+
 	ie_gstate.Initialize(ie_sink);
 
 	if (!ie_lstate.joiner && !ie_lstate.left_matches && !ie_lstate.right_matches) {
@@ -959,6 +991,10 @@ SourceResultType PhysicalIEJoin::GetData(ExecutionContext &context, DataChunk &r
 		ResolveComplexJoin(context, result, ie_lstate);
 
 		if (result.size()) {
+			BeeProfiler::Get().InsertStatRecord("[IEJoin - GetData - " + ie_sink.ie_join_name + "]" + " Inner",
+			                                    profiler.Elapsed());
+			BeeProfiler::Get().InsertStatRecord("[IEJoin - GetData - " + ie_sink.ie_join_name + "]" + " Inner - #Tuple",
+			                                    result.size());
 			return SourceResultType::HAVE_MORE_OUTPUT;
 		}
 
@@ -988,6 +1024,10 @@ SourceResultType PhysicalIEJoin::GetData(ExecutionContext &context, DataChunk &r
 		result.SetCardinality(count);
 		result.Verify();
 
+		BeeProfiler::Get().InsertStatRecord("[IEJoin - GetData - " + ie_sink.ie_join_name + "]" + " Left Outer",
+		                                    profiler.Elapsed());
+		BeeProfiler::Get().InsertStatRecord(
+		    "[IEJoin - GetData - " + ie_sink.ie_join_name + "]" + " Left Outer - #Tuple", result.size());
 		return result.size() == 0 ? SourceResultType::FINISHED : SourceResultType::HAVE_MORE_OUTPUT;
 	}
 
@@ -1017,6 +1057,12 @@ SourceResultType PhysicalIEJoin::GetData(ExecutionContext &context, DataChunk &r
 		break;
 	}
 
+	if (result.size() != 0) {
+		BeeProfiler::Get().InsertStatRecord("[IEJoin - GetData - " + ie_sink.ie_join_name + "]" + " Right Outer",
+		                                    profiler.Elapsed());
+		BeeProfiler::Get().InsertStatRecord(
+		    "[IEJoin - GetData - " + ie_sink.ie_join_name + "]" + " Right Outer - #Tuple", result.size());
+	}
 	return result.size() == 0 ? SourceResultType::FINISHED : SourceResultType::HAVE_MORE_OUTPUT;
 }
 
@@ -1047,4 +1093,4 @@ void PhysicalIEJoin::BuildPipelines(Pipeline &current, MetaPipeline &meta_pipeli
 	child_meta_pipeline.AddFinishEvent(rhs_pipeline);
 }
 
-} // namespace duckdb
+}  // namespace duckdb

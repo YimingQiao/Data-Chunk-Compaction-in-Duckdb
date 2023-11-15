@@ -1,5 +1,7 @@
 #include "duckdb/execution/operator/join/physical_asof_join.hpp"
 
+#include <thread>
+
 #include "duckdb/common/fast_mem.hpp"
 #include "duckdb/common/operator/comparison_operators.hpp"
 #include "duckdb/common/row_operations/row_operations.hpp"
@@ -13,8 +15,6 @@
 #include "duckdb/parallel/event.hpp"
 #include "duckdb/parallel/thread_context.hpp"
 
-#include <thread>
-
 namespace duckdb {
 
 PhysicalAsOfJoin::PhysicalAsOfJoin(LogicalComparisonJoin &op, unique_ptr<PhysicalOperator> left,
@@ -22,7 +22,6 @@ PhysicalAsOfJoin::PhysicalAsOfJoin(LogicalComparisonJoin &op, unique_ptr<Physica
     : PhysicalComparisonJoin(op, PhysicalOperatorType::ASOF_JOIN, std::move(op.conditions), op.join_type,
                              op.estimated_cardinality),
       comparison_type(ExpressionType::INVALID) {
-
 	// Convert the conditions partitions and sorts
 	for (auto &cond : conditions) {
 		D_ASSERT(cond.left->return_type == cond.right->return_type);
@@ -31,30 +30,30 @@ PhysicalAsOfJoin::PhysicalAsOfJoin(LogicalComparisonJoin &op, unique_ptr<Physica
 		auto left = cond.left->Copy();
 		auto right = cond.right->Copy();
 		switch (cond.comparison) {
-		case ExpressionType::COMPARE_GREATERTHANOREQUALTO:
-		case ExpressionType::COMPARE_GREATERTHAN:
-			null_sensitive.emplace_back(lhs_orders.size());
-			lhs_orders.emplace_back(OrderType::ASCENDING, OrderByNullType::NULLS_LAST, std::move(left));
-			rhs_orders.emplace_back(OrderType::ASCENDING, OrderByNullType::NULLS_LAST, std::move(right));
-			comparison_type = cond.comparison;
-			break;
-		case ExpressionType::COMPARE_LESSTHANOREQUALTO:
-		case ExpressionType::COMPARE_LESSTHAN:
-			//	Always put NULLS LAST so they can be ignored.
-			null_sensitive.emplace_back(lhs_orders.size());
-			lhs_orders.emplace_back(OrderType::DESCENDING, OrderByNullType::NULLS_LAST, std::move(left));
-			rhs_orders.emplace_back(OrderType::DESCENDING, OrderByNullType::NULLS_LAST, std::move(right));
-			comparison_type = cond.comparison;
-			break;
-		case ExpressionType::COMPARE_EQUAL:
-			null_sensitive.emplace_back(lhs_orders.size());
-			// Fall through
-		case ExpressionType::COMPARE_NOT_DISTINCT_FROM:
-			lhs_partitions.emplace_back(std::move(left));
-			rhs_partitions.emplace_back(std::move(right));
-			break;
-		default:
-			throw NotImplementedException("Unsupported join condition for ASOF join");
+			case ExpressionType::COMPARE_GREATERTHANOREQUALTO:
+			case ExpressionType::COMPARE_GREATERTHAN:
+				null_sensitive.emplace_back(lhs_orders.size());
+				lhs_orders.emplace_back(OrderType::ASCENDING, OrderByNullType::NULLS_LAST, std::move(left));
+				rhs_orders.emplace_back(OrderType::ASCENDING, OrderByNullType::NULLS_LAST, std::move(right));
+				comparison_type = cond.comparison;
+				break;
+			case ExpressionType::COMPARE_LESSTHANOREQUALTO:
+			case ExpressionType::COMPARE_LESSTHAN:
+				//	Always put NULLS LAST so they can be ignored.
+				null_sensitive.emplace_back(lhs_orders.size());
+				lhs_orders.emplace_back(OrderType::DESCENDING, OrderByNullType::NULLS_LAST, std::move(left));
+				rhs_orders.emplace_back(OrderType::DESCENDING, OrderByNullType::NULLS_LAST, std::move(right));
+				comparison_type = cond.comparison;
+				break;
+			case ExpressionType::COMPARE_EQUAL:
+				null_sensitive.emplace_back(lhs_orders.size());
+				// Fall through
+			case ExpressionType::COMPARE_NOT_DISTINCT_FROM:
+				lhs_partitions.emplace_back(std::move(left));
+				rhs_partitions.emplace_back(std::move(right));
+				break;
+			default:
+				throw NotImplementedException("Unsupported join condition for ASOF join");
 		}
 	}
 	D_ASSERT(!lhs_orders.empty());
@@ -79,9 +78,15 @@ PhysicalAsOfJoin::PhysicalAsOfJoin(LogicalComparisonJoin &op, unique_ptr<Physica
 //===--------------------------------------------------------------------===//
 class AsOfGlobalSinkState : public GlobalSinkState {
 public:
-	AsOfGlobalSinkState(ClientContext &context, const PhysicalAsOfJoin &op)
+	AsOfGlobalSinkState(ClientContext &context, const PhysicalAsOfJoin &op, string &conditions_str)
 	    : rhs_sink(context, op.rhs_partitions, op.rhs_orders, op.children[1]->types, {}, op.estimated_cardinality),
-	      is_outer(IsRightOuterJoin(op.join_type)), has_null(false) {
+	      is_outer(IsRightOuterJoin(op.join_type)),
+	      has_null(false) {
+		// yiqiao: get name of this hash join
+		const void *address = static_cast<const void *>(&op);
+		std::stringstream ss;
+		ss << address;
+		asof_name = conditions_str + " - " + ss.str();
 	}
 
 	idx_t Count() const {
@@ -106,6 +111,9 @@ public:
 
 	mutex lock;
 	vector<unique_ptr<PartitionLocalSinkState>> lhs_buffers;
+
+	//! yiqiao: asof join name
+	string asof_name;
 };
 
 class AsOfLocalSinkState : public LocalSinkState {
@@ -126,7 +134,14 @@ public:
 };
 
 unique_ptr<GlobalSinkState> PhysicalAsOfJoin::GetGlobalSinkState(ClientContext &context) const {
-	return make_uniq<AsOfGlobalSinkState>(context, *this);
+	string conditions_str;
+	for (size_t i = 0; i < conditions.size(); ++i) {
+		auto &con = conditions[i];
+		conditions_str +=
+		    con.left->GetName() + " " + ExpressionTypeToString(con.comparison) + " " + con.right->GetName();
+		if (i != conditions.size() - 1) conditions_str += ", ";
+	}
+	return make_uniq<AsOfGlobalSinkState>(context, *this, conditions_str);
 }
 
 unique_ptr<LocalSinkState> PhysicalAsOfJoin::GetLocalSinkState(ExecutionContext &context) const {
@@ -137,8 +152,13 @@ unique_ptr<LocalSinkState> PhysicalAsOfJoin::GetLocalSinkState(ExecutionContext 
 
 SinkResultType PhysicalAsOfJoin::Sink(ExecutionContext &context, DataChunk &chunk, OperatorSinkInput &input) const {
 	auto &lstate = input.local_state.Cast<AsOfLocalSinkState>();
+	auto &gsink = sink_state->Cast<AsOfGlobalSinkState>();
 
+	Profiler profiler;
+	profiler.Start();
 	lstate.Sink(chunk);
+	BeeProfiler::Get().InsertStatRecord("[AsOfJoin - Sink - " + gsink.asof_name + "]", profiler.Elapsed());
+	BeeProfiler::Get().InsertStatRecord("[AsOfJoin - Sink - " + gsink.asof_name + "] #Tuples", chunk.size());
 
 	return SinkResultType::NEED_MORE_INPUT;
 }
@@ -200,8 +220,12 @@ unique_ptr<GlobalOperatorState> PhysicalAsOfJoin::GetGlobalOperatorState(ClientC
 class AsOfLocalState : public CachingOperatorState {
 public:
 	AsOfLocalState(ClientContext &context, const PhysicalAsOfJoin &op)
-	    : context(context), allocator(Allocator::Get(context)), op(op), lhs_executor(context),
-	      left_outer(IsLeftOuterJoin(op.join_type)), fetch_next_left(true) {
+	    : context(context),
+	      allocator(Allocator::Get(context)),
+	      op(op),
+	      lhs_executor(context),
+	      left_outer(IsLeftOuterJoin(op.join_type)),
+	      fetch_next_left(true) {
 		lhs_keys.Initialize(allocator, op.join_key_types);
 		for (const auto &cond : op.conditions) {
 			lhs_executor.AddExpression(*cond.left);
@@ -314,6 +338,9 @@ OperatorResultType PhysicalAsOfJoin::ExecuteInternal(ExecutionContext &context, 
 	auto &gsink = sink_state->Cast<AsOfGlobalSinkState>();
 	auto &lstate = lstate_p.Cast<AsOfLocalState>();
 
+	Profiler profiler;
+	profiler.Start();
+
 	if (gsink.rhs_sink.count == 0) {
 		// empty RHS
 		if (!EmptyResultIfRHSIsEmpty()) {
@@ -323,8 +350,11 @@ OperatorResultType PhysicalAsOfJoin::ExecuteInternal(ExecutionContext &context, 
 			return OperatorResultType::FINISHED;
 		}
 	}
+	auto res = lstate.ExecuteInternal(context, input, chunk);
 
-	return lstate.ExecuteInternal(context, input, chunk);
+	BeeProfiler::Get().InsertStatRecord("[AsOfJoin - Execute - " + gsink.asof_name + "]", profiler.Elapsed());
+	BeeProfiler::Get().InsertStatRecord("[AsOfJoin - Execute - " + gsink.asof_name + "] #Tuple", chunk.size());
+	return res;
 }
 
 //===--------------------------------------------------------------------===//
@@ -387,12 +417,16 @@ public:
 };
 
 AsOfProbeBuffer::AsOfProbeBuffer(ClientContext &context, const PhysicalAsOfJoin &op)
-    : context(context), allocator(Allocator::Get(context)), op(op),
-      buffer_manager(BufferManager::GetBufferManager(context)), force_external(IsExternal(context)),
-      memory_per_thread(op.GetMaxThreadMemory(context)), left_outer(IsLeftOuterJoin(op.join_type)),
+    : context(context),
+      allocator(Allocator::Get(context)),
+      op(op),
+      buffer_manager(BufferManager::GetBufferManager(context)),
+      force_external(IsExternal(context)),
+      memory_per_thread(op.GetMaxThreadMemory(context)),
+      left_outer(IsLeftOuterJoin(op.join_type)),
       fetch_next_left(true) {
 	vector<unique_ptr<BaseStatistics>> partition_stats;
-	Orders partitions; // Not used.
+	Orders partitions;  // Not used.
 	PartitionGlobalSinkState::GenerateOrderings(partitions, lhs_orders, op.lhs_partitions, op.lhs_orders,
 	                                            partition_stats);
 
@@ -414,20 +448,20 @@ void AsOfProbeBuffer::BeginLeftScan(hash_t scan_bin) {
 
 	auto iterator_comp = ExpressionType::INVALID;
 	switch (op.comparison_type) {
-	case ExpressionType::COMPARE_GREATERTHANOREQUALTO:
-		iterator_comp = ExpressionType::COMPARE_LESSTHANOREQUALTO;
-		break;
-	case ExpressionType::COMPARE_GREATERTHAN:
-		iterator_comp = ExpressionType::COMPARE_LESSTHAN;
-		break;
-	case ExpressionType::COMPARE_LESSTHANOREQUALTO:
-		iterator_comp = ExpressionType::COMPARE_GREATERTHANOREQUALTO;
-		break;
-	case ExpressionType::COMPARE_LESSTHAN:
-		iterator_comp = ExpressionType::COMPARE_GREATERTHAN;
-		break;
-	default:
-		throw NotImplementedException("Unsupported comparison type for ASOF join");
+		case ExpressionType::COMPARE_GREATERTHANOREQUALTO:
+			iterator_comp = ExpressionType::COMPARE_LESSTHANOREQUALTO;
+			break;
+		case ExpressionType::COMPARE_GREATERTHAN:
+			iterator_comp = ExpressionType::COMPARE_LESSTHAN;
+			break;
+		case ExpressionType::COMPARE_LESSTHANOREQUALTO:
+			iterator_comp = ExpressionType::COMPARE_GREATERTHANOREQUALTO;
+			break;
+		case ExpressionType::COMPARE_LESSTHAN:
+			iterator_comp = ExpressionType::COMPARE_GREATERTHAN;
+			break;
+		default:
+			throw NotImplementedException("Unsupported comparison type for ASOF join");
 	}
 
 	left_hash = lhs_sink.hash_groups[left_group].get();
@@ -554,14 +588,14 @@ void AsOfProbeBuffer::ResolveSimpleJoin(ExecutionContext &context, DataChunk &ch
 
 	// now construct the result based on the join result
 	switch (op.join_type) {
-	case JoinType::SEMI:
-		PhysicalJoin::ConstructSemiJoinResult(lhs_payload, chunk, found_match);
-		break;
-	case JoinType::ANTI:
-		PhysicalJoin::ConstructAntiJoinResult(lhs_payload, chunk, found_match);
-		break;
-	default:
-		throw NotImplementedException("Unimplemented join type for AsOf join");
+		case JoinType::SEMI:
+			PhysicalJoin::ConstructSemiJoinResult(lhs_payload, chunk, found_match);
+			break;
+		case JoinType::ANTI:
+			PhysicalJoin::ConstructAntiJoinResult(lhs_payload, chunk, found_match);
+			break;
+		default:
+			throw NotImplementedException("Unimplemented join type for AsOf join");
 	}
 }
 
@@ -600,6 +634,8 @@ void AsOfProbeBuffer::ResolveComplexJoin(ExecutionContext &context, DataChunk &c
 }
 
 void AsOfProbeBuffer::GetData(ExecutionContext &context, DataChunk &chunk) {
+	auto &gsink = op.sink_state->Cast<AsOfGlobalSinkState>();
+
 	//	Handle dangling left join results from current chunk
 	if (!fetch_next_left) {
 		fetch_next_left = true;
@@ -618,20 +654,20 @@ void AsOfProbeBuffer::GetData(ExecutionContext &context, DataChunk &chunk) {
 	}
 
 	switch (op.join_type) {
-	case JoinType::SEMI:
-	case JoinType::ANTI:
-	case JoinType::MARK:
-		// simple joins can have max STANDARD_VECTOR_SIZE matches per chunk
-		ResolveSimpleJoin(context, chunk);
-		break;
-	case JoinType::LEFT:
-	case JoinType::INNER:
-	case JoinType::RIGHT:
-	case JoinType::OUTER:
-		ResolveComplexJoin(context, chunk);
-		break;
-	default:
-		throw NotImplementedException("Unimplemented type for as-of join!");
+		case JoinType::SEMI:
+		case JoinType::ANTI:
+		case JoinType::MARK:
+			// simple joins can have max STANDARD_VECTOR_SIZE matches per chunk
+			ResolveSimpleJoin(context, chunk);
+			break;
+		case JoinType::LEFT:
+		case JoinType::INNER:
+		case JoinType::RIGHT:
+		case JoinType::OUTER:
+			ResolveComplexJoin(context, chunk);
+			break;
+		default:
+			throw NotImplementedException("Unimplemented type for as-of join!");
 	}
 }
 
@@ -764,13 +800,24 @@ SourceResultType PhysicalAsOfJoin::GetData(ExecutionContext &context, DataChunk 
 	auto &rhs_sink = gsource.gsink.rhs_sink;
 	auto &client = context.client;
 
+	Profiler profiler;
+	profiler.Start();
+
 	//	Step 1: Combine the partitions
 	if (!lsource.CombineLeftPartitions()) {
+		BeeProfiler::Get().InsertStatRecord("[AsOfJoin - GetData - " + gsource.gsink.asof_name + "]",
+		                                    profiler.Elapsed());
+		BeeProfiler::Get().InsertStatRecord("[AsOfJoin - GetData - " + gsource.gsink.asof_name + "] #Tuples",
+		                                    chunk.size());
 		return SourceResultType::FINISHED;
 	}
 
 	//	Step 2: Sort on all threads
 	if (!lsource.MergeLeftPartitions()) {
+		BeeProfiler::Get().InsertStatRecord("[AsOfJoin - GetData - " + gsource.gsink.asof_name + "]",
+		                                    profiler.Elapsed());
+		BeeProfiler::Get().InsertStatRecord("[AsOfJoin - GetData - " + gsource.gsink.asof_name + "] #Tuples",
+		                                    chunk.size());
 		return SourceResultType::FINISHED;
 	}
 
@@ -797,6 +844,10 @@ SourceResultType PhysicalAsOfJoin::GetData(ExecutionContext &context, DataChunk 
 
 		lsource.probe_buffer.GetData(context, chunk);
 		if (chunk.size()) {
+			BeeProfiler::Get().InsertStatRecord("[AsOfJoin - GetData - " + gsource.gsink.asof_name + "]",
+			                                    profiler.Elapsed());
+			BeeProfiler::Get().InsertStatRecord("[AsOfJoin - GetData - " + gsource.gsink.asof_name + "] #Tuples",
+			                                    chunk.size());
 			return SourceResultType::HAVE_MORE_OUTPUT;
 		} else if (lsource.probe_buffer.HasMoreData()) {
 			//	Join the next partition
@@ -809,6 +860,10 @@ SourceResultType PhysicalAsOfJoin::GetData(ExecutionContext &context, DataChunk 
 
 	//	Step 4: Emit right join matches
 	if (!IsRightOuterJoin(join_type)) {
+		BeeProfiler::Get().InsertStatRecord("[AsOfJoin - GetData - " + gsource.gsink.asof_name + "]",
+		                                    profiler.Elapsed());
+		BeeProfiler::Get().InsertStatRecord("[AsOfJoin - GetData - " + gsource.gsink.asof_name + "] #Tuples",
+		                                    chunk.size());
 		return SourceResultType::FINISHED;
 	}
 
@@ -826,6 +881,10 @@ SourceResultType PhysicalAsOfJoin::GetData(ExecutionContext &context, DataChunk 
 			lsource.hash_group.reset();
 			auto hash_bin = gsource.next_right++;
 			if (hash_bin >= right_groups) {
+				BeeProfiler::Get().InsertStatRecord("[AsOfJoin - GetData - " + gsource.gsink.asof_name + "]",
+				                                    profiler.Elapsed());
+				BeeProfiler::Get().InsertStatRecord("[AsOfJoin - GetData - " + gsource.gsink.asof_name + "] #Tuples",
+				                                    chunk.size());
 				return SourceResultType::FINISHED;
 			}
 
@@ -841,6 +900,10 @@ SourceResultType PhysicalAsOfJoin::GetData(ExecutionContext &context, DataChunk 
 
 		const auto count = rhs_chunk.size();
 		if (count == 0) {
+			BeeProfiler::Get().InsertStatRecord("[AsOfJoin - GetData - " + gsource.gsink.asof_name + "]",
+			                                    profiler.Elapsed());
+			BeeProfiler::Get().InsertStatRecord("[AsOfJoin - GetData - " + gsource.gsink.asof_name + "] #Tuples",
+			                                    chunk.size());
 			return SourceResultType::FINISHED;
 		}
 
@@ -869,7 +932,9 @@ SourceResultType PhysicalAsOfJoin::GetData(ExecutionContext &context, DataChunk 
 		}
 	}
 
+	BeeProfiler::Get().InsertStatRecord("[AsOfJoin - GetData - " + gsource.gsink.asof_name + "]", profiler.Elapsed());
+	BeeProfiler::Get().InsertStatRecord("[AsOfJoin - GetData - " + gsource.gsink.asof_name + "] #Tuples", chunk.size());
 	return chunk.size() > 0 ? SourceResultType::HAVE_MORE_OUTPUT : SourceResultType::FINISHED;
 }
 
-} // namespace duckdb
+}  // namespace duckdb

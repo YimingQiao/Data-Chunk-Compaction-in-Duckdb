@@ -21,7 +21,8 @@ void ExecuteQuery(duckdb::Connection &con, std::string query, size_t running_tim
 		auto result = con.Query(query);
 
 		duckdb::BeeProfiler::Get().EndProfiling();
-		std::cerr << "----------------------------------------------------------\n";
+		std::cerr << "-------------------------------------------------------------------------------------------------"
+		             "-------------------\n";
 
 		if (i >= running_times - showing_times) {
 			if (!result->HasError()) {
@@ -48,7 +49,7 @@ int main() {
 	{ con.Query("SET threads TO 102;"); }
 
 	// set the allocator flush threshold
-	{ auto res = con.Query("SET allocator_flush_threshold=\"16gb\"; "); }
+	{ auto res = con.Query("SET allocator_flush_threshold=\"64gb\"; "); }
 
 	// disable the object cache
 	{ con.Query("PRAGMA disable_object_cache;"); }
@@ -121,7 +122,7 @@ int main() {
 		    "(SELECT room.stu_id, room.room_id, type.type FROM room INNER JOIN type ON room.type = type.type) AS t2, "
 		    "WHERE t1.stu_id = t2.stu_id;";
 
-		// ExecuteQuery(bushy_query, 2, 1);
+		// ExecuteQuery(con, bushy_query, 2, 1);
 	}
 
 	// I want to find the lock contension in the join building phase.
@@ -136,7 +137,7 @@ int main() {
 			    "AS t2 WHERE student.stu_id = t2.stu_id) "
 			    "AS t0 WHERE student.stu_id = t0.stu_id";
 
-			ExecuteQuery(con, right_deep_query, 2, 1);
+			// ExecuteQuery(con, right_deep_query, 2, 1);
 		}
 
 		// BUSHY
@@ -149,7 +150,7 @@ int main() {
 			    "(SELECT room.stu_id, room.room_id, type.type FROM room INNER JOIN type ON room.type = type.type) AS "
 			    "t2 WHERE t1.stu_id = t2.stu_id;";
 
-			ExecuteQuery(con, bushy_join, 2, 1);
+			// ExecuteQuery(con, bushy_join, 2, 1);
 		}
 
 		// Left-Deep
@@ -160,9 +161,59 @@ int main() {
 			    "(SELECT student.stu_id, t2.room_id, t2.type FROM "
 			    "(SELECT room.stu_id, room.room_id, t3.type FROM room, type AS t3 WHERE room.type = t3.type) "
 			    "AS t2, student WHERE student.stu_id = t2.stu_id) "
-			    "AS t0, student WHERE student.stu_id = t0.stu_id";
+			    "AS t0, student WHERE student.stu_id = t0.stu_id;";
 
-			ExecuteQuery(con, query, 2, 1);
+			// ExecuteQuery(con, query, 2, 1);
+		}
+	}
+
+	// how about the range join?
+	{
+		con.Query(
+		    "CREATE TEMPORARY TABLE room_2 AS "
+		    "SELECT t.room_id, t.room_id + 1 AS next_id, t.stu_id, t.type "
+		    "FROM room AS t "
+		    "WHERE t.room_id < 100000;");
+		con.Query(
+		    "CREATE VIEW room_ie AS "
+		    "SELECT room.room_id, room.stu_id, room_2.type, room_2.next_id "
+		    "FROM room ASOF JOIN room_2 "
+		    "ON room.room_id >= room_2.room_id;");
+
+		con.Query(
+		    "CREATE TEMPORARY TABLE student_2 AS "
+		    "SELECT t.stu_id, t.stu_id + 1 AS next_id, t.major_id, t.age "
+		    "FROM student AS t "
+		    "WHERE t.stu_id < 100000;");
+		con.Query(
+		    "CREATE VIEW student_ie AS "
+		    "SELECT student.stu_id, student.major_id, student.age, student_2.next_id "
+		    "FROM student ASOF JOIN student_2 "
+		    "ON student.stu_id >= student_2.stu_id;");
+
+		// left deep
+		{
+			std::string left_deep_query =
+			    "EXPLAIN ANALYZE "
+			    "SELECT student_ie.stu_id, department.major_id, room_ie.room_id, room_ie.next_id, type.type "
+			    "FROM student_ie, department, room_ie, type "
+			    "WHERE student_ie.stu_id = room_ie.stu_id AND student_ie.major_id = department.major_id "
+			    "	AND room_ie.type = type.type;";
+
+			ExecuteQuery(con, left_deep_query, 2, 1);
+		}
+		// bushy
+		{
+			std::string bushy_query =
+			    "EXPLAIN ANALYZE "
+			    "SELECT t1.stu_id, t1.major_id, t2.room_id, t2.next_id, t2.type FROM "
+			    "(SELECT student_ie.stu_id, department.major_id, FROM student_ie, department "
+			    "	WHERE student_ie.major_id = department.major_id) AS t1, "
+			    "(SELECT room_ie.stu_id, room_ie.room_id, room_ie.next_id, type.type FROM room_ie INNER JOIN type "
+			    "	ON room_ie.type = type.type) AS t2 "
+			    "WHERE t1.stu_id = t2.stu_id;";
+
+			// ExecuteQuery(con, bushy_query, 2, 1);
 		}
 	}
 
