@@ -173,7 +173,7 @@ int main() {
 		    "CREATE TEMPORARY TABLE room_2 AS "
 		    "SELECT t.room_id, t.room_id + 1 AS next_id, t.stu_id, t.type "
 		    "FROM room AS t "
-		    "WHERE t.room_id < 100000;");
+		    "WHERE t.room_id < 1000000;");
 		con.Query(
 		    "CREATE VIEW room_ie AS "
 		    "SELECT room.room_id, room.stu_id, room_2.type, room_2.next_id "
@@ -184,7 +184,7 @@ int main() {
 		    "CREATE TEMPORARY TABLE student_2 AS "
 		    "SELECT t.stu_id, t.stu_id + 1 AS next_id, t.major_id, t.age "
 		    "FROM student AS t "
-		    "WHERE t.stu_id < 100000;");
+		    "WHERE t.stu_id < 1000000;");
 		con.Query(
 		    "CREATE VIEW student_ie AS "
 		    "SELECT student.stu_id, student.major_id, student.age, student_2.next_id "
@@ -200,7 +200,7 @@ int main() {
 			    "WHERE student_ie.stu_id = room_ie.stu_id AND student_ie.major_id = department.major_id "
 			    "	AND room_ie.type = type.type;";
 
-			ExecuteQuery(con, left_deep_query, 2, 1);
+			// ExecuteQuery(con, left_deep_query, 2, 1);
 		}
 		// bushy
 		{
@@ -213,7 +213,7 @@ int main() {
 			    "	ON room_ie.type = type.type) AS t2 "
 			    "WHERE t1.stu_id = t2.stu_id;";
 
-			// ExecuteQuery(con, bushy_query, 2, 1);
+			ExecuteQuery(con, bushy_query, 2, 1);
 		}
 	}
 

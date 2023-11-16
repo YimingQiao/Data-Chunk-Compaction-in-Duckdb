@@ -164,7 +164,13 @@ bool Pipeline::ScheduleParallel(shared_ptr<Event> &event) {
 	// asof join
 	{
 		if ((source->GetName() == "ASOF_JOIN") || sink->GetName() == "ASOF_JOIN") {
-			max_threads = 96;
+			max_threads = 32;
+		}
+	}
+	// iejoin
+	{
+		if ((source->GetName() == "IE_JOIN") || sink->GetName() == "IE_JOIN") {
+			max_threads = 32;
 		}
 	}
 

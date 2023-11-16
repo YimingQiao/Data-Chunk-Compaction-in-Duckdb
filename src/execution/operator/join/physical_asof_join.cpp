@@ -805,19 +805,19 @@ SourceResultType PhysicalAsOfJoin::GetData(ExecutionContext &context, DataChunk 
 
 	//	Step 1: Combine the partitions
 	if (!lsource.CombineLeftPartitions()) {
-		BeeProfiler::Get().InsertStatRecord("[AsOfJoin - GetData - " + gsource.gsink.asof_name + "]",
-		                                    profiler.Elapsed());
-		BeeProfiler::Get().InsertStatRecord("[AsOfJoin - GetData - " + gsource.gsink.asof_name + "] #Tuples",
-		                                    chunk.size());
+		BeeProfiler::Get().InsertStatRecord(
+		    "[AsOfJoin - GetData - " + gsource.gsink.asof_name + "] Combine the partitions", profiler.Elapsed());
+		BeeProfiler::Get().InsertStatRecord(
+		    "[AsOfJoin - GetData - " + gsource.gsink.asof_name + "] Combine the partitions #Tuples", chunk.size());
 		return SourceResultType::FINISHED;
 	}
 
 	//	Step 2: Sort on all threads
 	if (!lsource.MergeLeftPartitions()) {
-		BeeProfiler::Get().InsertStatRecord("[AsOfJoin - GetData - " + gsource.gsink.asof_name + "]",
-		                                    profiler.Elapsed());
-		BeeProfiler::Get().InsertStatRecord("[AsOfJoin - GetData - " + gsource.gsink.asof_name + "] #Tuples",
-		                                    chunk.size());
+		BeeProfiler::Get().InsertStatRecord(
+		    "[AsOfJoin - GetData - " + gsource.gsink.asof_name + "] Sort on all threads", profiler.Elapsed());
+		BeeProfiler::Get().InsertStatRecord(
+		    "[AsOfJoin - GetData - " + gsource.gsink.asof_name + "] Sort on all threads #Tuples", chunk.size());
 		return SourceResultType::FINISHED;
 	}
 
@@ -844,10 +844,10 @@ SourceResultType PhysicalAsOfJoin::GetData(ExecutionContext &context, DataChunk 
 
 		lsource.probe_buffer.GetData(context, chunk);
 		if (chunk.size()) {
-			BeeProfiler::Get().InsertStatRecord("[AsOfJoin - GetData - " + gsource.gsink.asof_name + "]",
-			                                    profiler.Elapsed());
-			BeeProfiler::Get().InsertStatRecord("[AsOfJoin - GetData - " + gsource.gsink.asof_name + "] #Tuples",
-			                                    chunk.size());
+			BeeProfiler::Get().InsertStatRecord(
+			    "[AsOfJoin - GetData - " + gsource.gsink.asof_name + "] Join the partitions", profiler.Elapsed());
+			BeeProfiler::Get().InsertStatRecord(
+			    "[AsOfJoin - GetData - " + gsource.gsink.asof_name + "] Join the partitions #Tuples", chunk.size());
 			return SourceResultType::HAVE_MORE_OUTPUT;
 		} else if (lsource.probe_buffer.HasMoreData()) {
 			//	Join the next partition
@@ -860,10 +860,10 @@ SourceResultType PhysicalAsOfJoin::GetData(ExecutionContext &context, DataChunk 
 
 	//	Step 4: Emit right join matches
 	if (!IsRightOuterJoin(join_type)) {
-		BeeProfiler::Get().InsertStatRecord("[AsOfJoin - GetData - " + gsource.gsink.asof_name + "]",
-		                                    profiler.Elapsed());
-		BeeProfiler::Get().InsertStatRecord("[AsOfJoin - GetData - " + gsource.gsink.asof_name + "] #Tuples",
-		                                    chunk.size());
+		BeeProfiler::Get().InsertStatRecord(
+		    "[AsOfJoin - GetData - " + gsource.gsink.asof_name + "] Emit right join matches", profiler.Elapsed());
+		BeeProfiler::Get().InsertStatRecord(
+		    "[AsOfJoin - GetData - " + gsource.gsink.asof_name + "] Emit right join matches #Tuples", chunk.size());
 		return SourceResultType::FINISHED;
 	}
 

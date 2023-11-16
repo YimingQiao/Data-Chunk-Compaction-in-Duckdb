@@ -201,10 +201,10 @@ unique_ptr<LogicalOperator> Optimizer::Optimize(unique_ptr<LogicalOperator> plan
 	});
 
 	// In this part, we perform the bushy join ordering optimization
-	//	RunOptimizer(OptimizerType::JOIN_ORDER_BUSHY, [&]() {
-	//		BushyOrderOptimizer bushy(context);
-	//		plan = bushy.Rewrite(std::move(plan));
-	//	});
+	RunOptimizer(OptimizerType::JOIN_ORDER_BUSHY, [&]() {
+		BushyOrderOptimizer bushy(context);
+		plan = bushy.Rewrite(std::move(plan));
+	});
 
 	//	RunOptimizer(OptimizerType::CACHE_HASH_TABLE, [&]() {
 	//		SplitPipelineOptimizer cache(context);
