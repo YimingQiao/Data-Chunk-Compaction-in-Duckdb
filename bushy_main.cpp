@@ -195,10 +195,10 @@ int main() {
 		{
 			std::string left_deep_query =
 			    "EXPLAIN ANALYZE "
-			    "SELECT student_ie.stu_id, department.major_id, room_ie.room_id, room_ie.next_id, type.type "
-			    "FROM student_ie, department, room_ie, type "
-			    "WHERE student_ie.stu_id = room_ie.stu_id AND student_ie.major_id = department.major_id "
-			    "	AND room_ie.type = type.type;";
+			    "SELECT student_ie.stu_id, department.major_id, room.room_id, type.type "
+			    "FROM student_ie, department, room, type "
+			    "WHERE student_ie.stu_id = room.stu_id AND student_ie.major_id = department.major_id "
+			    "	AND room.type = type.type;";
 
 			// ExecuteQuery(con, left_deep_query, 2, 1);
 		}
@@ -206,11 +206,11 @@ int main() {
 		{
 			std::string bushy_query =
 			    "EXPLAIN ANALYZE "
-			    "SELECT t1.stu_id, t1.major_id, t2.room_id, t2.next_id, t2.type FROM "
+			    "SELECT t1.stu_id, t1.major_id, t2.room_id, t2.type FROM "
 			    "(SELECT student_ie.stu_id, department.major_id, FROM student_ie, department "
 			    "	WHERE student_ie.major_id = department.major_id) AS t1, "
-			    "(SELECT room_ie.stu_id, room_ie.room_id, room_ie.next_id, type.type FROM room_ie INNER JOIN type "
-			    "	ON room_ie.type = type.type) AS t2 "
+			    "(SELECT room.stu_id, room.room_id, type.type, type.info FROM room INNER JOIN type "
+			    "	ON room.type = type.type) AS t2 "
 			    "WHERE t1.stu_id = t2.stu_id;";
 
 			ExecuteQuery(con, bushy_query, 2, 1);
