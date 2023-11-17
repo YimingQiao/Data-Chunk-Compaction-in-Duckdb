@@ -1136,3 +1136,6 @@ target_link_libraries(bushy_plan duckdb)
 # Use the same student-dormoritory database to test the very long probing pipeline performance
 add_executable(the_longer_the_better the_longer_the_better.cpp)
 target_link_libraries(the_longer_the_better duckdb)
+
+add_executable(bushy_asof bushy_asof.cpp)
+target_link_libraries(bushy_asof duckdb)

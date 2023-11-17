@@ -144,7 +144,7 @@ bool Pipeline::ScheduleParallel(shared_ptr<Event> &event) {
 
 	// Left Deep Hash Table Probing
 	if ((sink->GetName() == "EXPLAIN_ANALYZE") && !operators.empty()) {
-		max_threads = 96;
+		max_threads = 64;
 	}
 
 	if (source->GetName() == "BREAKER") {
@@ -168,7 +168,7 @@ bool Pipeline::ScheduleParallel(shared_ptr<Event> &event) {
 		}
 
 		if ((source->GetName() == "ASOF_JOIN") && sink->GetName() == "EXPLAIN_ANALYZE") {
-			max_threads = 96;
+			max_threads = 32;
 		}
 	}
 	// iejoin

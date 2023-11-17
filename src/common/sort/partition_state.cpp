@@ -1,18 +1,17 @@
 #include "duckdb/common/sort/partition_state.hpp"
 
-#include "duckdb/common/types/column/column_data_consumer.hpp"
+#include <numeric>
+
 #include "duckdb/common/row_operations/row_operations.hpp"
+#include "duckdb/common/types/column/column_data_consumer.hpp"
 #include "duckdb/main/config.hpp"
 #include "duckdb/parallel/event.hpp"
-
-#include <numeric>
 
 namespace duckdb {
 
 PartitionGlobalHashGroup::PartitionGlobalHashGroup(BufferManager &buffer_manager, const Orders &partitions,
                                                    const Orders &orders, const Types &payload_types, bool external)
     : count(0), batch_base(0) {
-
 	RowLayout payload_layout;
 	payload_layout.Initialize(payload_types);
 	global_sort = make_uniq<GlobalSortState>(buffer_manager, orders, payload_layout);
@@ -60,7 +59,6 @@ void PartitionGlobalSinkState::GenerateOrderings(Orders &partitions, Orders &ord
                                                  const vector<unique_ptr<Expression>> &partition_bys,
                                                  const Orders &order_bys,
                                                  const vector<unique_ptr<BaseStatistics>> &partition_stats) {
-
 	// we sort by both 1) partition by expression list and 2) order by expressions
 	const auto partition_cols = partition_bys.size();
 	for (idx_t prt_idx = 0; prt_idx < partition_cols; prt_idx++) {
@@ -86,9 +84,14 @@ PartitionGlobalSinkState::PartitionGlobalSinkState(ClientContext &context,
                                                    const Types &payload_types,
                                                    const vector<unique_ptr<BaseStatistics>> &partition_stats,
                                                    idx_t estimated_cardinality)
-    : context(context), buffer_manager(BufferManager::GetBufferManager(context)), allocator(Allocator::Get(context)),
-      fixed_bits(0), payload_types(payload_types), memory_per_thread(0), max_bits(1), count(0) {
-
+    : context(context),
+      buffer_manager(BufferManager::GetBufferManager(context)),
+      allocator(Allocator::Get(context)),
+      fixed_bits(0),
+      payload_types(payload_types),
+      memory_per_thread(0),
+      max_bits(1),
+      count(0) {
 	GenerateOrderings(partitions, orders, partition_bys, order_bys, partition_stats);
 
 	memory_per_thread = PhysicalOperator::GetMaxThreadMemory(context);
@@ -212,7 +215,6 @@ void PartitionGlobalSinkState::CombineLocalPartition(GroupingPartition &local_pa
 
 PartitionLocalMergeState::PartitionLocalMergeState(PartitionGlobalSinkState &gstate)
     : merge_state(nullptr), stage(PartitionSortStage::INIT), finished(true), executor(gstate.context) {
-
 	//	 Set up the sort expression computation.
 	vector<LogicalType> sort_types;
 	for (auto &order : gstate.orders) {
@@ -258,7 +260,6 @@ void PartitionLocalMergeState::Scan() {
 //	Per-thread sink state
 PartitionLocalSinkState::PartitionLocalSinkState(ClientContext &context, PartitionGlobalSinkState &gstate_p)
     : gstate(gstate_p), allocator(Allocator::Get(context)), executor(context) {
-
 	vector<LogicalType> group_types;
 	for (idx_t prt_idx = 0; prt_idx < gstate.partitions.size(); prt_idx++) {
 		auto &pexpr = *gstate.partitions[prt_idx].expression.get();
@@ -401,10 +402,14 @@ void PartitionLocalSinkState::Combine() {
 
 PartitionGlobalMergeState::PartitionGlobalMergeState(PartitionGlobalSinkState &sink, GroupDataPtr group_data_p,
                                                      hash_t hash_bin)
-    : sink(sink), group_data(std::move(group_data_p)), memory_per_thread(sink.memory_per_thread),
-      num_threads(TaskScheduler::GetScheduler(sink.context).NumberOfThreads()), stage(PartitionSortStage::INIT),
-      total_tasks(0), tasks_assigned(0), tasks_completed(0) {
-
+    : sink(sink),
+      group_data(std::move(group_data_p)),
+      memory_per_thread(sink.memory_per_thread),
+      num_threads(TaskScheduler::GetScheduler(sink.context).NumberOfThreads()),
+      stage(PartitionSortStage::INIT),
+      total_tasks(0),
+      tasks_assigned(0),
+      tasks_completed(0) {
 	const auto group_idx = sink.hash_groups.size();
 	auto new_group = make_uniq<PartitionGlobalHashGroup>(sink.buffer_manager, sink.partitions, sink.orders,
 	                                                     sink.payload_types, sink.external);
@@ -423,10 +428,13 @@ PartitionGlobalMergeState::PartitionGlobalMergeState(PartitionGlobalSinkState &s
 }
 
 PartitionGlobalMergeState::PartitionGlobalMergeState(PartitionGlobalSinkState &sink)
-    : sink(sink), memory_per_thread(sink.memory_per_thread),
-      num_threads(TaskScheduler::GetScheduler(sink.context).NumberOfThreads()), stage(PartitionSortStage::INIT),
-      total_tasks(0), tasks_assigned(0), tasks_completed(0) {
-
+    : sink(sink),
+      memory_per_thread(sink.memory_per_thread),
+      num_threads(TaskScheduler::GetScheduler(sink.context).NumberOfThreads()),
+      stage(PartitionSortStage::INIT),
+      total_tasks(0),
+      tasks_assigned(0),
+      tasks_completed(0) {
 	const hash_t hash_bin = 0;
 	const size_t group_idx = 0;
 	hash_group = sink.hash_groups[group_idx].get();
@@ -450,17 +458,17 @@ void PartitionLocalMergeState::Merge() {
 
 void PartitionLocalMergeState::ExecuteTask() {
 	switch (stage) {
-	case PartitionSortStage::SCAN:
-		Scan();
-		break;
-	case PartitionSortStage::PREPARE:
-		Prepare();
-		break;
-	case PartitionSortStage::MERGE:
-		Merge();
-		break;
-	default:
-		throw InternalException("Unexpected PartitionSortStage in ExecuteTask!");
+		case PartitionSortStage::SCAN:
+			Scan();
+			break;
+		case PartitionSortStage::PREPARE:
+			Prepare();
+			break;
+		case PartitionSortStage::MERGE:
+			Merge();
+			break;
+		default:
+			throw InternalException("Unexpected PartitionSortStage in ExecuteTask!");
 	}
 
 	merge_state->CompleteTask();
@@ -498,40 +506,40 @@ bool PartitionGlobalMergeState::TryPrepareNextStage() {
 	tasks_assigned = tasks_completed = 0;
 
 	switch (stage) {
-	case PartitionSortStage::INIT:
-		//	If the partitions are unordered, don't scan in parallel
-		//	because it produces non-deterministic orderings.
-		//	This can theoretically happen with ORDER BY,
-		//	but that is something the query should be explicit about.
-		total_tasks = sink.orders.size() > sink.partitions.size() ? num_threads : 1;
-		stage = PartitionSortStage::SCAN;
-		return true;
+		case PartitionSortStage::INIT:
+			//	If the partitions are unordered, don't scan in parallel
+			//	because it produces non-deterministic orderings.
+			//	This can theoretically happen with ORDER BY,
+			//	but that is something the query should be explicit about.
+			total_tasks = sink.orders.size() > sink.partitions.size() ? num_threads : 1;
+			stage = PartitionSortStage::SCAN;
+			return true;
 
-	case PartitionSortStage::SCAN:
-		total_tasks = 1;
-		stage = PartitionSortStage::PREPARE;
-		return true;
+		case PartitionSortStage::SCAN:
+			total_tasks = 1;
+			stage = PartitionSortStage::PREPARE;
+			return true;
 
-	case PartitionSortStage::PREPARE:
-		total_tasks = global_sort->sorted_blocks.size() / 2;
-		if (!total_tasks) {
+		case PartitionSortStage::PREPARE:
+			total_tasks = global_sort->sorted_blocks.size() / 2;
+			if (!total_tasks) {
+				break;
+			}
+			stage = PartitionSortStage::MERGE;
+			global_sort->InitializeMergeRound();
+			return true;
+
+		case PartitionSortStage::MERGE:
+			global_sort->CompleteMergeRound(true);
+			total_tasks = global_sort->sorted_blocks.size() / 2;
+			if (!total_tasks) {
+				break;
+			}
+			global_sort->InitializeMergeRound();
+			return true;
+
+		case PartitionSortStage::SORTED:
 			break;
-		}
-		stage = PartitionSortStage::MERGE;
-		global_sort->InitializeMergeRound();
-		return true;
-
-	case PartitionSortStage::MERGE:
-		global_sort->CompleteMergeRound(true);
-		total_tasks = global_sort->sorted_blocks.size() / 2;
-		if (!total_tasks) {
-			break;
-		}
-		global_sort->InitializeMergeRound();
-		return true;
-
-	case PartitionSortStage::SORTED:
-		break;
 	}
 
 	stage = PartitionSortStage::SORTED;
@@ -647,6 +655,10 @@ bool PartitionGlobalMergeStates::ExecuteTask(PartitionLocalMergeState &local_sta
 }
 
 TaskExecutionResult PartitionMergeTask::ExecuteTask(TaskExecutionMode mode) {
+	Profiler profiler;
+	profiler.Start();
+	string name = "[Merge Partition]";
+
 	ExecutorCallback callback(executor);
 
 	if (!hash_groups.ExecuteTask(local_state, callback)) {
@@ -654,6 +666,8 @@ TaskExecutionResult PartitionMergeTask::ExecuteTask(TaskExecutionMode mode) {
 	}
 
 	event->FinishTask();
+
+	BeeProfiler::Get().InsertStatRecord(name, profiler.Elapsed());
 	return TaskExecutionResult::TASK_FINISHED;
 }
 
@@ -662,7 +676,15 @@ void PartitionMergeEvent::Schedule() {
 
 	// Schedule tasks equal to the number of threads, which will each merge multiple partitions
 	auto &ts = TaskScheduler::GetScheduler(context);
-	idx_t num_threads = ts.NumberOfThreads();
+	// idx_t num_threads = ts.NumberOfThreads();
+	// yiqiao: set the partition threads
+	const idx_t active_threads = TaskScheduler::GetScheduler(context).NumberOfThreads();
+	const idx_t num_threads = 32;
+	auto now = std::chrono::system_clock::now();
+	auto duration = now.time_since_epoch();
+	auto milliseconds = std::chrono::duration_cast<std::chrono::milliseconds>(duration).count() % 1000000;
+	std::cerr << " [Open] Merge Partition\t #task/#thread: " + std::to_string(num_threads) + "/" +
+	                 std::to_string(active_threads) + "\tTick: " + std::to_string(milliseconds) + "ms\n";
 
 	vector<shared_ptr<Task>> merge_tasks;
 	for (idx_t tnum = 0; tnum < num_threads; tnum++) {
@@ -671,4 +693,4 @@ void PartitionMergeEvent::Schedule() {
 	SetTasks(std::move(merge_tasks));
 }
 
-} // namespace duckdb
+}  // namespace duckdb
