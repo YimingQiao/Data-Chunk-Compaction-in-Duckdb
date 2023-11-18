@@ -302,7 +302,7 @@ public:
 	//! Capacity of the pointer table given the ht count
 	//! (minimum of 1024 to prevent collision chance for small HT's)
 	static idx_t PointerTableCapacity(idx_t count) {
-		return MaxValue<idx_t>(NextPowerOfTwo(count * 2), 1 << 10);
+		return MaxValue<idx_t>(NextPowerOfTwo(count / 4), 1 << 10);
 	}
 	//! Size of the pointer table (in bytes)
 	static idx_t PointerTableSize(idx_t count) {

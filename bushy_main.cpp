@@ -108,7 +108,7 @@ int main() {
 		    "FROM student, department, room, type "
 		    "WHERE student.stu_id = room.stu_id AND student.major_id = department.major_id AND room.type = type.type;";
 
-		// ExecuteQuery(con, query, 2, 1);
+		ExecuteQuery(con, query, 2, 1);
 	}
 
 	// BUSHY join query
@@ -122,7 +122,7 @@ int main() {
 		    "(SELECT room.stu_id, room.room_id, type.type FROM room INNER JOIN type ON room.type = type.type) AS t2, "
 		    "WHERE t1.stu_id = t2.stu_id;";
 
-		// ExecuteQuery(con, bushy_query, 2, 1);
+		ExecuteQuery(con, bushy_query, 2, 1);
 	}
 
 	// I want to find the lock contension in the join building phase.
@@ -213,7 +213,7 @@ int main() {
 			    "	ON room.type = type.type) AS t2 "
 			    "WHERE t1.stu_id = t2.stu_id;";
 
-			ExecuteQuery(con, bushy_query, 2, 1);
+			// ExecuteQuery(con, bushy_query, 2, 1);
 		}
 	}
 

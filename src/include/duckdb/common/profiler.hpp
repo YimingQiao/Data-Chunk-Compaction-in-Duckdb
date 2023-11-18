@@ -51,7 +51,7 @@ using Profiler = BaseProfiler<system_clock>;
 
 class BeeProfiler {
 public:
-	const static bool kEnableProfiling = false;
+	const static bool kEnableProfiling = true;
 
 public:
 	static BeeProfiler &Get() {

@@ -134,7 +134,6 @@ bool Pipeline::ScheduleParallel(shared_ptr<Event> &event) {
 
 	// idx_t max_threads = source_state->MaxThreads();
 	idx_t max_threads = 1;
-	idx_t kMultiThread = 32;
 
 	// Hash Table Partition & build
 	if ((source->GetName() == "SEQ_SCAN " || source->GetName() == "READ_PARQUET ") && sink->GetName() == "HASH_JOIN" &&
@@ -143,7 +142,7 @@ bool Pipeline::ScheduleParallel(shared_ptr<Event> &event) {
 	}
 
 	// Left Deep Hash Table Probing
-	if ((sink->GetName() == "EXPLAIN_ANALYZE") && !operators.empty()) {
+	if (source->GetName() == "SEQ_SCAN " && sink->GetName() == "EXPLAIN_ANALYZE" && !operators.empty()) {
 		max_threads = 64;
 	}
 
