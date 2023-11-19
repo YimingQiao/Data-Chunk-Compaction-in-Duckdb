@@ -138,26 +138,26 @@ bool Pipeline::ScheduleParallel(shared_ptr<Event> &event) {
 	// Hash Table Partition & build
 	if ((source->GetName() == "SEQ_SCAN " || source->GetName() == "READ_PARQUET ") && sink->GetName() == "HASH_JOIN" &&
 	    operators.empty()) {
-		max_threads = 32;
+		max_threads = 1;
 	}
 
-	// Left Deep Hash Table Probing
+	// Left Deep Probing
 	if (source->GetName() == "SEQ_SCAN " && sink->GetName() == "EXPLAIN_ANALYZE" && !operators.empty()) {
-		max_threads = 64;
+		max_threads = 2;
 	}
 
 	if (source->GetName() == "BREAKER") {
-		max_threads = 64;
+		max_threads = 2;
 	}
 
 	if ((source->GetName() == "SEQ_SCAN " || source->GetName() == "READ_PARQUET ") && sink->GetName() == "BREAKER") {
-		max_threads = 32;
+		max_threads = 1;
 	}
 
 	// Hash Table Probing for Next Hash Table Building
 	if ((source->GetName() == "SEQ_SCAN " || source->GetName() == "READ_PARQUET ") && sink->GetName() == "HASH_JOIN" &&
 	    !operators.empty()) {
-		max_threads = 32;
+		max_threads = 1;
 	}
 
 	// asof join
