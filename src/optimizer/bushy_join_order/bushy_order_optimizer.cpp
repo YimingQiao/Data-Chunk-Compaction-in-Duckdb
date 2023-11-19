@@ -9,13 +9,16 @@ unique_ptr<LogicalOperator> BushyOrderOptimizer::Rewrite(unique_ptr<duckdb::Logi
 		case LogicalOperatorType::LOGICAL_COMPARISON_JOIN: {
 			bool can_break_record = can_break;
 
+			can_break = true;
 			// if the RHS is a get, we do not break the pipeline
-			if (op->children[1]->type == LogicalOperatorType::LOGICAL_GET ||
-			    (op->children[1]->type == LogicalOperatorType::LOGICAL_PROJECTION &&
-			     op->children[1]->children[0]->type == LogicalOperatorType::LOGICAL_GET)) {
+			if (op->children[1]->type == LogicalOperatorType::LOGICAL_GET) {
 				can_break = false;
-			} else {
-				can_break = true;
+			} else if (op->children[1]->type == LogicalOperatorType::LOGICAL_PROJECTION &&
+			           op->children[1]->children[0]->type == LogicalOperatorType::LOGICAL_GET) {
+				can_break = false;
+			} else if (op->children[1]->type == LogicalOperatorType::LOGICAL_FILTER &&
+			           op->children[1]->children[0]->type == LogicalOperatorType::LOGICAL_GET) {
+				can_break = false;
 			}
 			op->children[0] = Rewrite(move(op->children[0]));
 
