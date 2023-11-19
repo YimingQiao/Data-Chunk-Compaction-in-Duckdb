@@ -1139,3 +1139,6 @@ target_link_libraries(the_longer_the_better duckdb)
 
 add_executable(bushy_asof bushy_asof.cpp)
 target_link_libraries(bushy_asof duckdb)
+
+add_executable(bushy_simd bushy_simd.cpp)
+target_link_libraries(bushy_simd duckdb)
