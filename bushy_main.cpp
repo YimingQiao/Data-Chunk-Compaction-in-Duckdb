@@ -242,102 +242,42 @@ int main() {
 }
 
 void GenDatabase(duckdb::Connection &con) {
-	std::vector<std::string> sql_create = {"CREATE TABLE student (stu_id INTEGER, major_id INTEGER, age TINYINT);",
-	                                       "CREATE TABLE department(major_id INTEGER, name VARCHAR);"
-	                                       "CREATE TABLE room (room_id INTEGER, stu_id INTEGER, type INTEGER);"
-	                                       "CREATE TABLE type (type INTEGER, info VARCHAR);"};
-
-	for (const auto &sql : sql_create) {
-		con.Query(sql);
-	}
-
 	// database setting
-	uint64_t stu_n = 5 * 1e7;
-	uint64_t major_n = 5 * 1e6;
-	uint64_t room_n = 5 * 1e6;
-
-	// random generator
-	std::mt19937 mt(42);
-
-	// drop previous data
-	con.Query("DELETE FROM student; DELETE FROM department; DELETE FROM room; DELETE FROM type;");
+	uint64_t stu_n = 5e7;
+	uint64_t major_n = 5e6;
+	uint64_t room_n = 5e6;
 
 	// insert into student, use mt to generate tuples
 	{
-		std::string sql_insert = "INSERT INTO student VALUES ";
-		for (uint64_t i = 0; i < stu_n; i++) {
-			uint64_t major_id = mt() % major_n;
-			uint16_t age = mt() % 100;
-			sql_insert += "(" + std::to_string(i) + ", " + std::to_string(major_id) + ", " + std::to_string(age) + ")";
-			if (i != stu_n - 1) sql_insert += ", ";
+		con.Query(
+		    "CREATE OR REPLACE TABLE student AS "
+		    "SELECT "
+		    "    CAST(stu_id AS INT) AS stu_id, "
+		    "    CAST((RANDOM() * CAST(5e6 AS INT)) AS INT) AS major_id, "
+		    "    CAST((RANDOM() * 100) AS TINYINT) AS age "
+		    "FROM generate_series(1,  CAST(5e7 AS INT)) vals(stu_id);");
 
-			if (i % (5 * stu_n / 100) == 0) {
-				con.Query(sql_insert + ";");
-				sql_insert = "INSERT INTO student VALUES ";
-				std::cout << "Student Table Batch " + std::to_string(double(i) / stu_n * 100) + "%" + " inserted\n";
-			}
-		}
-		if (sql_insert != "INSERT INTO student VALUES ") {
-			con.Query(sql_insert + ";");
-		}
-		std::cout << "Student table inserted\n";
-	}
-	// insert into department, use majors
-	{
-		std::string sql_insert = "INSERT INTO department VALUES ";
-		for (uint64_t i = 0; i < major_n; i++) {
-			sql_insert += "(" + std::to_string(i) + ", '" + "major_" + std::to_string(i) + "')";
-			if (i != major_n - 1) sql_insert += ", ";
+		con.Query(
+		    "CREATE OR REPLACE TABLE department AS "
+		    "SELECT "
+		    "    CAST(major_id AS INT) AS major_id, "
+		    "    'major_' || (major_id) AS name "
+		    "FROM generate_series(1,  CAST(5e6 AS INT)) vals(major_id);");
 
-			if (i % (5 * major_n / 100) == 0) {
-				con.Query(sql_insert + ";");
-				sql_insert = "INSERT INTO department VALUES ";
-				std::cout << "Department Table Batch " + std::to_string(double(i) / major_n * 100) + "%" +
-				                 " inserted\n";
-			}
-		}
-		if (sql_insert != "INSERT INTO department VALUES ") {
-			con.Query(sql_insert + ";");
-		}
-		std::cout << "Department table inserted\n";
-	}
-	// insert into room, use mt to generate tuples, each student has a room
-	{
-		std::string sql_insert = "INSERT INTO room VALUES ";
-		for (uint64_t i = 0; i < stu_n; i++) {
-			uint64_t type = mt() % room_n;
-			sql_insert += "(" + std::to_string(i) + ", " + std::to_string(i) + ", " + std::to_string(type) + ")";
-			if (i != stu_n - 1) sql_insert += ", ";
+		con.Query(
+		    "CREATE OR REPLACE TABLE room AS "
+		    "SELECT "
+		    "    CAST(room_id AS INT) AS room_id, "
+		    "    CAST(room_id AS INT) AS stu_id, "
+		    "    CAST((RANDOM() * CAST(5e6 AS INT)) AS INT) AS type "
+		    "FROM generate_series(1,  CAST(5e7 AS INT)) vals(room_id);");
 
-			if (i % (5 * stu_n / 100) == 0) {
-				con.Query(sql_insert + ";");
-				sql_insert = "INSERT INTO room VALUES ";
-				std::cout << "Room Table Batch " + std::to_string(double(i) / stu_n * 100) + "%" + " inserted\n";
-			}
-		}
-		if (sql_insert != "INSERT INTO room VALUES ") {
-			con.Query(sql_insert + ";");
-		}
-		std::cout << "Room table inserted\n";
-	}
-
-	// insert into type, use room_types
-	{
-		std::string sql_insert = "INSERT INTO type VALUES ";
-		for (uint64_t i = 0; i < room_n; i++) {
-			sql_insert += "(" + std::to_string(i) + ", '" + "room_type_" + std::to_string(i) + "')";
-			if (i != room_n - 1) sql_insert += ", ";
-
-			if (i % (5 * room_n / 100) == 0) {
-				con.Query(sql_insert + ";");
-				sql_insert = "INSERT INTO type VALUES ";
-				std::cout << "Type Table Batch " + std::to_string(double(i) / room_n * 100) + "%" + " inserted\n";
-			}
-		}
-		if (sql_insert != "INSERT INTO type VALUES ") {
-			con.Query(sql_insert + ";");
-		}
-		std::cout << "Type table inserted\n";
+		con.Query(
+		    "CREATE OR REPLACE TABLE type AS "
+		    "SELECT "
+		    "    CAST(type AS INT) AS type, "
+		    "    'room_type_' || type AS info "
+		    "FROM generate_series(1,  CAST(5e6 AS INT)) vals(type);");
 	}
 	// We export the tables to disk in parquet format, separately.
 	{
