@@ -19,7 +19,6 @@ PhysicalPiecewiseMergeJoin::PhysicalPiecewiseMergeJoin(LogicalComparisonJoin &op
                                                        JoinType join_type, idx_t estimated_cardinality)
     : PhysicalRangeJoin(op, PhysicalOperatorType::PIECEWISE_MERGE_JOIN, std::move(left), std::move(right),
                         std::move(cond), join_type, estimated_cardinality) {
-
 	for (auto &cond : conditions) {
 		D_ASSERT(cond.left->return_type == cond.right->return_type);
 		join_key_types.push_back(cond.left->return_type);
@@ -28,27 +27,27 @@ PhysicalPiecewiseMergeJoin::PhysicalPiecewiseMergeJoin(LogicalComparisonJoin &op
 		auto left = cond.left->Copy();
 		auto right = cond.right->Copy();
 		switch (cond.comparison) {
-		case ExpressionType::COMPARE_LESSTHAN:
-		case ExpressionType::COMPARE_LESSTHANOREQUALTO:
-			lhs_orders.emplace_back(OrderType::ASCENDING, OrderByNullType::NULLS_LAST, std::move(left));
-			rhs_orders.emplace_back(OrderType::ASCENDING, OrderByNullType::NULLS_LAST, std::move(right));
-			break;
-		case ExpressionType::COMPARE_GREATERTHAN:
-		case ExpressionType::COMPARE_GREATERTHANOREQUALTO:
-			lhs_orders.emplace_back(OrderType::DESCENDING, OrderByNullType::NULLS_LAST, std::move(left));
-			rhs_orders.emplace_back(OrderType::DESCENDING, OrderByNullType::NULLS_LAST, std::move(right));
-			break;
-		case ExpressionType::COMPARE_NOTEQUAL:
-		case ExpressionType::COMPARE_DISTINCT_FROM:
-			// Allowed in multi-predicate joins, but can't be first/sort.
-			D_ASSERT(!lhs_orders.empty());
-			lhs_orders.emplace_back(OrderType::INVALID, OrderByNullType::NULLS_LAST, std::move(left));
-			rhs_orders.emplace_back(OrderType::INVALID, OrderByNullType::NULLS_LAST, std::move(right));
-			break;
+			case ExpressionType::COMPARE_LESSTHAN:
+			case ExpressionType::COMPARE_LESSTHANOREQUALTO:
+				lhs_orders.emplace_back(OrderType::ASCENDING, OrderByNullType::NULLS_LAST, std::move(left));
+				rhs_orders.emplace_back(OrderType::ASCENDING, OrderByNullType::NULLS_LAST, std::move(right));
+				break;
+			case ExpressionType::COMPARE_GREATERTHAN:
+			case ExpressionType::COMPARE_GREATERTHANOREQUALTO:
+				lhs_orders.emplace_back(OrderType::DESCENDING, OrderByNullType::NULLS_LAST, std::move(left));
+				rhs_orders.emplace_back(OrderType::DESCENDING, OrderByNullType::NULLS_LAST, std::move(right));
+				break;
+			case ExpressionType::COMPARE_NOTEQUAL:
+			case ExpressionType::COMPARE_DISTINCT_FROM:
+				// Allowed in multi-predicate joins, but can't be first/sort.
+				D_ASSERT(!lhs_orders.empty());
+				lhs_orders.emplace_back(OrderType::INVALID, OrderByNullType::NULLS_LAST, std::move(left));
+				rhs_orders.emplace_back(OrderType::INVALID, OrderByNullType::NULLS_LAST, std::move(right));
+				break;
 
-		default:
-			// COMPARE EQUAL not supported with merge join
-			throw NotImplementedException("Unimplemented join type for merge join");
+			default:
+				// COMPARE EQUAL not supported with merge join
+				throw NotImplementedException("Unimplemented join type for merge join");
 		}
 	}
 }
@@ -162,10 +161,18 @@ public:
 	using LocalSortedTable = PhysicalRangeJoin::LocalSortedTable;
 
 	PiecewiseMergeJoinState(ClientContext &context, const PhysicalPiecewiseMergeJoin &op, bool force_external)
-	    : context(context), allocator(Allocator::Get(context)), op(op),
-	      buffer_manager(BufferManager::GetBufferManager(context)), force_external(force_external),
-	      left_outer(IsLeftOuterJoin(op.join_type)), left_position(0), first_fetch(true), finished(true),
-	      right_position(0), right_chunk_index(0), rhs_executor(context) {
+	    : context(context),
+	      allocator(Allocator::Get(context)),
+	      op(op),
+	      buffer_manager(BufferManager::GetBufferManager(context)),
+	      force_external(force_external),
+	      left_outer(IsLeftOuterJoin(op.join_type)),
+	      left_position(0),
+	      first_fetch(true),
+	      finished(true),
+	      right_position(0),
+	      right_chunk_index(0),
+	      rhs_executor(context) {
 		vector<LogicalType> condition_types;
 		for (auto &order : op.lhs_orders) {
 			condition_types.push_back(order.expression->return_type);
@@ -266,14 +273,14 @@ static inline idx_t SortedBlockNotNull(const idx_t base, const idx_t count, cons
 
 static int MergeJoinComparisonValue(ExpressionType comparison) {
 	switch (comparison) {
-	case ExpressionType::COMPARE_LESSTHAN:
-	case ExpressionType::COMPARE_GREATERTHAN:
-		return -1;
-	case ExpressionType::COMPARE_LESSTHANOREQUALTO:
-	case ExpressionType::COMPARE_GREATERTHANOREQUALTO:
-		return 0;
-	default:
-		throw InternalException("Unimplemented comparison type for merge join!");
+		case ExpressionType::COMPARE_LESSTHAN:
+		case ExpressionType::COMPARE_GREATERTHAN:
+			return -1;
+		case ExpressionType::COMPARE_LESSTHANOREQUALTO:
+		case ExpressionType::COMPARE_GREATERTHANOREQUALTO:
+			return 0;
+		default:
+			throw InternalException("Unimplemented comparison type for merge join!");
 	}
 }
 
@@ -405,32 +412,32 @@ void PhysicalPiecewiseMergeJoin::ResolveSimpleJoin(ExecutionContext &context, Da
 
 	// now construct the result based on the join result
 	switch (join_type) {
-	case JoinType::MARK: {
-		// The only part of the join keys that is actually used is the validity mask.
-		// Since the payload is sorted, we can just set the tail end of the validity masks to invalid.
-		for (auto &key : lhs_table.keys.data) {
-			key.Flatten(lhs_table.keys.size());
-			auto &mask = FlatVector::Validity(key);
-			if (mask.AllValid()) {
-				continue;
+		case JoinType::MARK: {
+			// The only part of the join keys that is actually used is the validity mask.
+			// Since the payload is sorted, we can just set the tail end of the validity masks to invalid.
+			for (auto &key : lhs_table.keys.data) {
+				key.Flatten(lhs_table.keys.size());
+				auto &mask = FlatVector::Validity(key);
+				if (mask.AllValid()) {
+					continue;
+				}
+				mask.SetAllValid(lhs_not_null);
+				for (idx_t i = lhs_not_null; i < lhs_table.count; ++i) {
+					mask.SetInvalid(i);
+				}
 			}
-			mask.SetAllValid(lhs_not_null);
-			for (idx_t i = lhs_not_null; i < lhs_table.count; ++i) {
-				mask.SetInvalid(i);
-			}
+			// So we make a set of keys that have the validity mask set for the
+			PhysicalJoin::ConstructMarkJoinResult(lhs_table.keys, payload, chunk, found_match, gstate.table->has_null);
+			break;
 		}
-		// So we make a set of keys that have the validity mask set for the
-		PhysicalJoin::ConstructMarkJoinResult(lhs_table.keys, payload, chunk, found_match, gstate.table->has_null);
-		break;
-	}
-	case JoinType::SEMI:
-		PhysicalJoin::ConstructSemiJoinResult(payload, chunk, found_match);
-		break;
-	case JoinType::ANTI:
-		PhysicalJoin::ConstructAntiJoinResult(payload, chunk, found_match);
-		break;
-	default:
-		throw NotImplementedException("Unimplemented join type for merge join");
+		case JoinType::SEMI:
+			PhysicalJoin::ConstructSemiJoinResult(payload, chunk, found_match);
+			break;
+		case JoinType::ANTI:
+			PhysicalJoin::ConstructAntiJoinResult(payload, chunk, found_match);
+			break;
+		default:
+			throw NotImplementedException("Unimplemented join type for merge join");
 	}
 }
 
@@ -658,19 +665,19 @@ OperatorResultType PhysicalPiecewiseMergeJoin::ExecuteInternal(ExecutionContext 
 
 	input.Verify();
 	switch (join_type) {
-	case JoinType::SEMI:
-	case JoinType::ANTI:
-	case JoinType::MARK:
-		// simple joins can have max STANDARD_VECTOR_SIZE matches per chunk
-		ResolveSimpleJoin(context, input, chunk, state);
-		return OperatorResultType::NEED_MORE_INPUT;
-	case JoinType::LEFT:
-	case JoinType::INNER:
-	case JoinType::RIGHT:
-	case JoinType::OUTER:
-		return ResolveComplexJoin(context, input, chunk, state);
-	default:
-		throw NotImplementedException("Unimplemented type for piecewise merge loop join!");
+		case JoinType::SEMI:
+		case JoinType::ANTI:
+		case JoinType::MARK:
+			// simple joins can have max STANDARD_VECTOR_SIZE matches per chunk
+			ResolveSimpleJoin(context, input, chunk, state);
+			return OperatorResultType::NEED_MORE_INPUT;
+		case JoinType::LEFT:
+		case JoinType::INNER:
+		case JoinType::RIGHT:
+		case JoinType::OUTER:
+			return ResolveComplexJoin(context, input, chunk, state);
+		default:
+			throw NotImplementedException("Unimplemented type for piecewise merge loop join!");
 	}
 }
 
@@ -760,4 +767,4 @@ SourceResultType PhysicalPiecewiseMergeJoin::GetData(ExecutionContext &context, 
 	return result.size() == 0 ? SourceResultType::FINISHED : SourceResultType::HAVE_MORE_OUTPUT;
 }
 
-} // namespace duckdb
+}  // namespace duckdb
