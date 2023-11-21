@@ -8,9 +8,9 @@
 
 #pragma once
 
+#include "duckdb/common/sort/sort.hpp"
 #include "duckdb/execution/operator/join/physical_comparison_join.hpp"
 #include "duckdb/planner/bound_result_modifier.hpp"
-#include "duckdb/common/sort/sort.hpp"
 
 namespace duckdb {
 
@@ -115,4 +115,4 @@ public:
 	void ProjectResult(DataChunk &chunk, DataChunk &result) const;
 };
 
-} // namespace duckdb
+}  // namespace duckdb

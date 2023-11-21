@@ -1,5 +1,7 @@
 #include "duckdb/execution/operator/join/physical_range_join.hpp"
 
+#include <thread>
+
 #include "duckdb/common/fast_mem.hpp"
 #include "duckdb/common/operator/comparison_operators.hpp"
 #include "duckdb/common/row_operations/row_operations.hpp"
@@ -10,8 +12,6 @@
 #include "duckdb/main/client_context.hpp"
 #include "duckdb/parallel/base_pipeline_event.hpp"
 #include "duckdb/parallel/thread_context.hpp"
-
-#include <thread>
 
 namespace duckdb {
 
@@ -55,7 +55,9 @@ void PhysicalRangeJoin::LocalSortedTable::Sink(DataChunk &input, GlobalSortState
 
 PhysicalRangeJoin::GlobalSortedTable::GlobalSortedTable(ClientContext &context, const vector<BoundOrderByNode> &orders,
                                                         RowLayout &payload_layout)
-    : global_sort_state(BufferManager::GetBufferManager(context), orders, payload_layout), has_null(0), count(0),
+    : global_sort_state(BufferManager::GetBufferManager(context), orders, payload_layout),
+      has_null(0),
+      count(0),
       memory_per_thread(0) {
 	D_ASSERT(orders.size() == 1);
 
@@ -122,7 +124,15 @@ public:
 
 		// Schedule tasks equal to the number of threads, which will each merge multiple partitions
 		auto &ts = TaskScheduler::GetScheduler(context);
-		idx_t num_threads = ts.NumberOfThreads();
+		// yiqiao: do not use all threads for sorting, 16/32 is enough!
+		// idx_t num_threads = ts.NumberOfThreads();
+		idx_t active_threads = ts.NumberOfThreads();
+		idx_t num_threads = 4;
+		auto now = std::chrono::system_clock::now();
+		auto duration = now.time_since_epoch();
+		auto milliseconds = std::chrono::duration_cast<std::chrono::milliseconds>(duration).count() % 1000000;
+		std::cerr << " [Open] RangeJoinMergeEvent\t #task/#thread: " + std::to_string(num_threads) + "/" +
+		                 std::to_string(active_threads) + "\tTick: " + std::to_string(milliseconds) + "ms\n";
 
 		vector<shared_ptr<Task>> iejoin_tasks;
 		for (idx_t tnum = 0; tnum < num_threads; tnum++) {
@@ -173,15 +183,15 @@ PhysicalRangeJoin::PhysicalRangeJoin(LogicalComparisonJoin &op, PhysicalOperator
 		idx_t other_position = conditions_p.size();
 		for (idx_t i = 0; i < conditions_p.size(); ++i) {
 			switch (conditions_p[i].comparison) {
-			case ExpressionType::COMPARE_LESSTHAN:
-			case ExpressionType::COMPARE_LESSTHANOREQUALTO:
-			case ExpressionType::COMPARE_GREATERTHAN:
-			case ExpressionType::COMPARE_GREATERTHANOREQUALTO:
-				conditions[range_position++] = std::move(conditions_p[i]);
-				break;
-			default:
-				conditions[--other_position] = std::move(conditions_p[i]);
-				break;
+				case ExpressionType::COMPARE_LESSTHAN:
+				case ExpressionType::COMPARE_LESSTHANOREQUALTO:
+				case ExpressionType::COMPARE_GREATERTHAN:
+				case ExpressionType::COMPARE_GREATERTHANOREQUALTO:
+					conditions[range_position++] = std::move(conditions_p[i]);
+					break;
+				default:
+					conditions[--other_position] = std::move(conditions_p[i]);
+					break;
 			}
 		}
 	}
@@ -257,31 +267,31 @@ idx_t PhysicalRangeJoin::LocalSortedTable::MergeNulls(const vector<JoinCondition
 			}
 			pvalidity.EnsureWritable();
 			switch (v.GetVectorType()) {
-			case VectorType::FLAT_VECTOR: {
-				// Merge entire entries
-				auto pmask = pvalidity.GetData();
-				const auto entry_count = pvalidity.EntryCount(count);
-				for (idx_t entry_idx = 0; entry_idx < entry_count; ++entry_idx) {
-					pmask[entry_idx] &= vvalidity.GetValidityEntry(entry_idx);
-				}
-				break;
-			}
-			case VectorType::CONSTANT_VECTOR:
-				// All or nothing
-				if (ConstantVector::IsNull(v)) {
-					pvalidity.SetAllInvalid(count);
-					return count;
-				}
-				break;
-			default:
-				// One by one
-				for (idx_t i = 0; i < count; ++i) {
-					const auto idx = vdata.sel->get_index(i);
-					if (!vvalidity.RowIsValidUnsafe(idx)) {
-						pvalidity.SetInvalidUnsafe(i);
+				case VectorType::FLAT_VECTOR: {
+					// Merge entire entries
+					auto pmask = pvalidity.GetData();
+					const auto entry_count = pvalidity.EntryCount(count);
+					for (idx_t entry_idx = 0; entry_idx < entry_count; ++entry_idx) {
+						pmask[entry_idx] &= vvalidity.GetValidityEntry(entry_idx);
 					}
+					break;
 				}
-				break;
+				case VectorType::CONSTANT_VECTOR:
+					// All or nothing
+					if (ConstantVector::IsNull(v)) {
+						pvalidity.SetAllInvalid(count);
+						return count;
+					}
+					break;
+				default:
+					// One by one
+					for (idx_t i = 0; i < count; ++i) {
+						const auto idx = vdata.sel->get_index(i);
+						if (!vvalidity.RowIsValidUnsafe(idx)) {
+							pvalidity.SetInvalidUnsafe(i);
+						}
+					}
+					break;
 			}
 		}
 		return count - pvalidity.CountValid(count);
@@ -357,27 +367,27 @@ BufferHandle PhysicalRangeJoin::SliceSortedPayload(DataChunk &payload, GlobalSor
 idx_t PhysicalRangeJoin::SelectJoinTail(const ExpressionType &condition, Vector &left, Vector &right,
                                         const SelectionVector *sel, idx_t count, SelectionVector *true_sel) {
 	switch (condition) {
-	case ExpressionType::COMPARE_NOTEQUAL:
-		return VectorOperations::NotEquals(left, right, sel, count, true_sel, nullptr);
-	case ExpressionType::COMPARE_LESSTHAN:
-		return VectorOperations::LessThan(left, right, sel, count, true_sel, nullptr);
-	case ExpressionType::COMPARE_GREATERTHAN:
-		return VectorOperations::GreaterThan(left, right, sel, count, true_sel, nullptr);
-	case ExpressionType::COMPARE_LESSTHANOREQUALTO:
-		return VectorOperations::LessThanEquals(left, right, sel, count, true_sel, nullptr);
-	case ExpressionType::COMPARE_GREATERTHANOREQUALTO:
-		return VectorOperations::GreaterThanEquals(left, right, sel, count, true_sel, nullptr);
-	case ExpressionType::COMPARE_DISTINCT_FROM:
-		return VectorOperations::DistinctFrom(left, right, sel, count, true_sel, nullptr);
-	case ExpressionType::COMPARE_NOT_DISTINCT_FROM:
-		return VectorOperations::NotDistinctFrom(left, right, sel, count, true_sel, nullptr);
-	case ExpressionType::COMPARE_EQUAL:
-		return VectorOperations::Equals(left, right, sel, count, true_sel, nullptr);
-	default:
-		throw InternalException("Unsupported comparison type for PhysicalRangeJoin");
+		case ExpressionType::COMPARE_NOTEQUAL:
+			return VectorOperations::NotEquals(left, right, sel, count, true_sel, nullptr);
+		case ExpressionType::COMPARE_LESSTHAN:
+			return VectorOperations::LessThan(left, right, sel, count, true_sel, nullptr);
+		case ExpressionType::COMPARE_GREATERTHAN:
+			return VectorOperations::GreaterThan(left, right, sel, count, true_sel, nullptr);
+		case ExpressionType::COMPARE_LESSTHANOREQUALTO:
+			return VectorOperations::LessThanEquals(left, right, sel, count, true_sel, nullptr);
+		case ExpressionType::COMPARE_GREATERTHANOREQUALTO:
+			return VectorOperations::GreaterThanEquals(left, right, sel, count, true_sel, nullptr);
+		case ExpressionType::COMPARE_DISTINCT_FROM:
+			return VectorOperations::DistinctFrom(left, right, sel, count, true_sel, nullptr);
+		case ExpressionType::COMPARE_NOT_DISTINCT_FROM:
+			return VectorOperations::NotDistinctFrom(left, right, sel, count, true_sel, nullptr);
+		case ExpressionType::COMPARE_EQUAL:
+			return VectorOperations::Equals(left, right, sel, count, true_sel, nullptr);
+		default:
+			throw InternalException("Unsupported comparison type for PhysicalRangeJoin");
 	}
 
 	return count;
 }
 
-} // namespace duckdb
+}  // namespace duckdb
