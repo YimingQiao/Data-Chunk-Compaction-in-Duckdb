@@ -1,9 +1,15 @@
+#include <fstream>
 #include <iostream>
 #include <random>
 
 #include "duckdb.hpp"
 
-void ExecuteQuery(duckdb::Connection &con, std::string query, size_t running_times, size_t showing_times) {
+inline bool FileExisted(const std::string &name) {
+	std::ifstream f(name.c_str());
+	return f.good();
+}
+
+void ExecuteQuery(duckdb::Connection &con, const std::string &query, size_t running_times, size_t showing_times) {
 	if (running_times < showing_times) {
 		std::cerr << "running_times < showing_times\n";
 		return;
@@ -45,16 +51,23 @@ int main() {
 	{ con.Query("PRAGMA disable_object_cache;"); }
 
 	// ------------------------------------ Create Tables -------------------------------------------------
-	con.Query(
-	    "CREATE OR REPLACE TABLE build AS (\n"
-	    "  SELECT k, '2001-01-01 00:00:00'::TIMESTAMP + INTERVAL (v) MINUTE AS t, v\n"
-	    "  FROM range(0,2000000) vals(v), range(0,16) keys(k)\n"
-	    ");");
-	con.Query(
-	    "CREATE OR REPLACE TABLE probe AS (\n"
-	    "  SELECT k * 2 AS k, t - INTERVAL (30) SECOND AS t\n"
-	    "  FROM build\n"
-	    ");");
+	if (FileExisted("./build.parquet") && FileExisted("./probe.parquet")) {
+		con.Query("CREATE TEMPORARY TABLE build AS SELECT * FROM read_parquet('build.parquet');");
+		con.Query("CREATE TEMPORARY TABLE probe AS SELECT * FROM read_parquet('probe.parquet');");
+	} else {
+		con.Query(
+		    "CREATE OR REPLACE TABLE build AS (\n"
+		    "  SELECT k, '2001-01-01 00:00:00'::TIMESTAMP + INTERVAL (v) MINUTE AS t, v\n"
+		    "  FROM range(0,2000000) vals(v), range(0,16) keys(k)\n"
+		    ");");
+		con.Query(
+		    "CREATE OR REPLACE TABLE probe AS (\n"
+		    "  SELECT k * 2 AS k, t - INTERVAL (30) SECOND AS t\n"
+		    "  FROM build\n"
+		    ");");
+		con.Query("COPY build TO 'build.parquet' (FORMAT PARQUET);");
+		con.Query("COPY probe TO 'probe.parquet' (FORMAT PARQUET);");
+	}
 
 	std::string query = "EXPLAIN ANALYZE SELECT v FROM probe ASOF JOIN build USING(k, t);";
 	ExecuteQuery(con, query, 2, 1);
