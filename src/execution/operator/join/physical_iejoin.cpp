@@ -82,7 +82,7 @@ public:
 	using GlobalSortedTable = PhysicalRangeJoin::GlobalSortedTable;
 
 public:
-	IEJoinGlobalState(ClientContext &context, const PhysicalIEJoin &op, string &conditions_str) : child(0) {
+	IEJoinGlobalState(ClientContext &context, const PhysicalIEJoin &op, string &conditions_str) : child(1) {
 		tables.resize(2);
 		RowLayout lhs_layout;
 		lhs_layout.Initialize(op.children[0]->types);
@@ -106,7 +106,7 @@ public:
 	IEJoinGlobalState(IEJoinGlobalState &prev)
 	    : GlobalSinkState(prev),
 	      tables(std::move(prev.tables)),
-	      child(prev.child + 1),
+	      child(prev.child - 1),
 	      ie_join_name(prev.ie_join_name) {
 	}
 
@@ -158,6 +158,7 @@ SinkResultType PhysicalIEJoin::Sink(ExecutionContext &context, DataChunk &chunk,
 	profiler.Start();
 	gstate.Sink(chunk, lstate);
 	BeeProfiler::Get().InsertStatRecord("[IEJoin - Sink - " + gstate.ie_join_name + "]", profiler.Elapsed());
+	BeeProfiler::Get().InsertStatRecord("[IEJoin - Sink - " + gstate.ie_join_name + "] #Tuples", chunk.size());
 
 	return SinkResultType::NEED_MORE_INPUT;
 }
@@ -196,7 +197,7 @@ SinkFinalizeType PhysicalIEJoin::Finalize(Pipeline &pipeline, Event &event, Clie
 	table.Finalize(pipeline, event);
 
 	// Move to the next input child
-	++gstate.child;
+	--gstate.child;
 
 	return SinkFinalizeType::READY;
 }
@@ -1082,15 +1083,15 @@ void PhysicalIEJoin::BuildPipelines(Pipeline &current, MetaPipeline &meta_pipeli
 	auto &child_meta_pipeline = meta_pipeline.CreateChildMetaPipeline(current, *this);
 
 	// Build out LHS
-	auto lhs_pipeline = child_meta_pipeline.GetBasePipeline();
+	auto lhs_pipeline = child_meta_pipeline.CreatePipeline();
 	children[0]->BuildPipelines(*lhs_pipeline, child_meta_pipeline);
 
 	// Build out RHS
-	auto rhs_pipeline = child_meta_pipeline.CreatePipeline();
+	auto rhs_pipeline = child_meta_pipeline.GetBasePipeline();
 	children[1]->BuildPipelines(*rhs_pipeline, child_meta_pipeline);
 
 	// Despite having the same sink, RHS and everything created after it need their own (same) PipelineFinishEvent
-	child_meta_pipeline.AddFinishEvent(rhs_pipeline);
+	child_meta_pipeline.AddFinishEvent(lhs_pipeline);
 }
 
 }  // namespace duckdb
