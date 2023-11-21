@@ -281,7 +281,7 @@ unique_ptr<PhysicalOperator> PhysicalPlanGenerator::PlanComparisonJoin(LogicalCo
 		}
 	}
 
-	bool can_merge = has_range > 0;
+	bool can_merge = true;
 	bool can_iejoin = has_range >= 2 && recursive_cte_tables.empty();
 	switch (op.join_type) {
 		case JoinType::SEMI:
@@ -295,7 +295,8 @@ unique_ptr<PhysicalOperator> PhysicalPlanGenerator::PlanComparisonJoin(LogicalCo
 	}
 
 	//	TODO: Extend PWMJ to handle all comparisons and projection maps
-	const auto prefer_range_joins = (ClientConfig::GetConfig(context).prefer_range_joins && can_iejoin);
+	// yiqiao: PWMJ is ready for equality comparisons
+	const auto prefer_range_joins = (ClientConfig::GetConfig(context).prefer_range_joins);
 
 	unique_ptr<PhysicalOperator> plan;
 	if (has_equality && !prefer_range_joins) {

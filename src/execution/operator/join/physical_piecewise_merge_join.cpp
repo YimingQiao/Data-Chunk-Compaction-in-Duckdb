@@ -27,6 +27,7 @@ PhysicalPiecewiseMergeJoin::PhysicalPiecewiseMergeJoin(LogicalComparisonJoin &op
 		auto left = cond.left->Copy();
 		auto right = cond.right->Copy();
 		switch (cond.comparison) {
+			case ExpressionType::COMPARE_EQUAL:
 			case ExpressionType::COMPARE_LESSTHAN:
 			case ExpressionType::COMPARE_LESSTHANOREQUALTO:
 				lhs_orders.emplace_back(OrderType::ASCENDING, OrderByNullType::NULLS_LAST, std::move(left));
@@ -441,6 +442,79 @@ void PhysicalPiecewiseMergeJoin::ResolveSimpleJoin(ExecutionContext &context, Da
 	}
 }
 
+static idx_t MergeJoinComplexBlocksEqual(BlockMergeInfo &l, BlockMergeInfo &r, idx_t &prev_left_index) {
+	// The sort parameters should all be the same
+	D_ASSERT(l.state.sort_layout.all_constant == r.state.sort_layout.all_constant);
+	const auto all_constant = r.state.sort_layout.all_constant;
+	D_ASSERT(l.state.external == r.state.external);
+	const auto external = l.state.external;
+
+	// There should only be one sorted block if they have been sorted
+	D_ASSERT(l.state.sorted_blocks.size() == 1);
+	SBScanState lread(l.state.buffer_manager, l.state);
+	lread.sb = l.state.sorted_blocks[0].get();
+	D_ASSERT(lread.sb->radix_sorting_data.size() == 1);
+	MergeJoinPinSortingBlock(lread, l.block_idx);
+	auto l_start = MergeJoinRadixPtr(lread, 0);
+	auto l_ptr = MergeJoinRadixPtr(lread, l.entry_idx);
+
+	D_ASSERT(r.state.sorted_blocks.size() == 1);
+	SBScanState rread(r.state.buffer_manager, r.state);
+	rread.sb = r.state.sorted_blocks[0].get();
+
+	if (r.entry_idx >= r.not_null) {
+		return 0;
+	}
+
+	MergeJoinPinSortingBlock(rread, r.block_idx);
+	auto r_ptr = MergeJoinRadixPtr(rread, r.entry_idx);
+
+	const auto cmp_size = l.state.sort_layout.comparison_size;
+	const auto entry_size = l.state.sort_layout.entry_size;
+
+	idx_t result_count = 0;
+	while (true) {
+		int comp_res;
+		if (all_constant) {
+			comp_res = FastMemcmp(l_ptr, r_ptr, cmp_size);
+		} else {
+			lread.entry_idx = l.entry_idx;
+			rread.entry_idx = r.entry_idx;
+			comp_res = Comparators::CompareTuple(lread, rread, l_ptr, r_ptr, l.state.sort_layout, external);
+		}
+
+		if (comp_res == 0) {
+			// equal: found match
+			l.result.set_index(result_count, sel_t(l.entry_idx));
+			r.result.set_index(result_count, sel_t(r.entry_idx));
+			result_count++;
+
+			// TODO: this is a bug to fix.
+			r.entry_idx++;
+			if (r.entry_idx >= r.not_null) {
+				break;
+			}
+			r_ptr += entry_size;
+		} else {
+			bool left_less = comp_res < 0;
+			bool right_less = 1 - left_less;
+
+			l.entry_idx += left_less;
+			if (l.entry_idx >= l.not_null) {
+				break;
+			}
+			l_ptr += left_less * entry_size;
+
+			r.entry_idx += right_less;
+			if (r.entry_idx >= r.not_null) {
+				break;
+			}
+			r_ptr += right_less * entry_size;
+		}
+	}
+	return result_count;
+}
+
 static idx_t MergeJoinComplexBlocks(BlockMergeInfo &l, BlockMergeInfo &r, const ExpressionType comparison,
                                     idx_t &prev_left_index) {
 	const auto cmp = MergeJoinComparisonValue(comparison);
@@ -574,8 +648,14 @@ OperatorResultType PhysicalPiecewiseMergeJoin::ResolveComplexJoin(ExecutionConte
 		BlockMergeInfo right_info(gstate.table->global_sort_state, state.right_chunk_index, state.right_position,
 		                          rhs_not_null);
 
-		idx_t result_count =
-		    MergeJoinComplexBlocks(left_info, right_info, conditions[0].comparison, state.prev_left_index);
+		// yiqiao: add equal comparison
+		idx_t result_count;
+		if (conditions[0].comparison == ExpressionType::COMPARE_EQUAL) {
+			result_count = MergeJoinComplexBlocksEqual(left_info, right_info, state.prev_left_index);
+		} else {
+			result_count =
+			    MergeJoinComplexBlocks(left_info, right_info, conditions[0].comparison, state.prev_left_index);
+		}
 		if (result_count == 0) {
 			// exhausted this chunk on the right side
 			// move to the next right chunk
