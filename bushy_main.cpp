@@ -6,8 +6,6 @@
 std::string s3_access_key_id = "AKIARZ5TMPGJHQ4PFLDP";
 std::string s3_access_key = "+uSXS1yGwBP+wfoaqJrQ71/Mu7WPZbUNABDy2c0h";
 
-const bool kGenerateData = false;
-
 //	"CREATE TABLE student (stu_id INTEGER, major_id INTEGER, age TINYINT);",
 //  "CREATE TABLE department(major_id INTEGER, name VARCHAR);"
 //  "CREATE TABLE room (room_id INTEGER, stu_id INTEGER, type INTEGER);"
@@ -101,7 +99,7 @@ int main() {
 	duckdb::DuckDB db(db_name);
 	duckdb::Connection con(db);
 
-	if (kGenerateData) GenDatabase(con);
+	// GenDatabase(con);
 
 	// ------------------------------------ DuckDB Settings -------------------------------------------------
 	// set num of thread, we cannot use 128 threads because 2 threads are left for Perf.
@@ -143,26 +141,10 @@ int main() {
 	}
 
 	// ------------------------------------------ Query -----------------------------------------------------
+	// hash join or sort merge join?
+	con.Query("SET prefer_range_joins=true;");
 	// Hash Join
 	{
-		// hash join or sort merge join?
-		con.Query("SET prefer_range_joins=true;");
-
-		// SEQ join query
-		{
-			std::string query =
-			    "EXPLAIN ANALYZE "
-			    "SELECT student.stu_id, department.major_id, room.room_id, type.type "
-			    "FROM student, department, room, type "
-			    "WHERE student.stu_id = room.stu_id AND student.major_id = department.major_id AND room.type = "
-			    "type.type AND student.stu_id < 10000;";
-
-			ExecuteQuery(con, query, 1, 1);
-
-			con.Query("SET prefer_range_joins=false;");
-			ExecuteQuery(con, query, 1, 1);
-		}
-
 		// BUSHY join query
 		{
 			std::string bushy_query =
@@ -171,10 +153,22 @@ int main() {
 			    "FROM "
 			    "(SELECT student.stu_id, department.major_id "
 			    "	FROM student, department WHERE student.major_id = department.major_id) AS t1, "
-			    "(SELECT room.stu_id, room.room_id, type.type FROM room INNER JOIN type ON room.type = type.type) "
-			    "	AS t2, WHERE t1.stu_id = t2.stu_id AND t1.stu_id < 10000;";
+			    "(SELECT room.stu_id, room.room_id, type.type FROM room, type WHERE room.type = type.type) "
+			    "	AS t2, WHERE t1.stu_id = t2.stu_id AND t1.stu_id <= 10000000;";
 
-			// ExecuteQuery(con, bushy_query, 1, 1);
+			ExecuteQuery(con, bushy_query, 2, 1);
+		}
+
+		// SEQ join query
+		{
+			std::string query =
+			    "EXPLAIN ANALYZE "
+			    "SELECT student.stu_id, department.major_id, room.room_id, type.type "
+			    "FROM student, department, room, type "
+			    "WHERE student.stu_id = room.stu_id AND student.major_id = department.major_id AND room.type = "
+			    "type.type AND student.stu_id <= 10000000;";
+
+			// ExecuteQuery(con, query, 1, 1);
 		}
 	}
 
@@ -185,12 +179,12 @@ int main() {
 			std::string query =
 			    "EXPLAIN ANALYZE "
 			    "SELECT student.stu_id, department.major_id, room.room_id, type.type "
-			    "FROM student, department, room, type "
+			    "FROM student, room, department, type "
 			    "WHERE student.stu_id >= room.stu_id AND student.stu_id <= room.stu_id "
 			    "AND student.major_id >= department.major_id AND student.major_id <= department.major_id "
 			    "AND room.type >= type.type AND room.type <= type.type;";
 
-			// ExecuteQuery(con, query, 1, 1);
+			// ExecuteQuery(con, query, 2, 1);
 		}
 
 		// BUSHY join query
@@ -206,7 +200,7 @@ int main() {
 			    "room.type <= type.type) AS t2, "
 			    "WHERE t1.stu_id >= t2.stu_id AND t1.stu_id <= t2.stu_id;";
 
-			// ExecuteQuery(con, bushy_query, 1, 1);
+			// ExecuteQuery(con, bushy_query, 2, 1);
 		}
 	}
 
