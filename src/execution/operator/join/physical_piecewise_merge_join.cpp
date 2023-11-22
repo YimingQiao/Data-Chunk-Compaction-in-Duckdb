@@ -77,6 +77,18 @@ public:
 		vector<BoundOrderByNode> rhs_order;
 		rhs_order.emplace_back(op.rhs_orders[0].Copy());
 		table = make_uniq<GlobalSortedTable>(context, rhs_order, rhs_layout);
+
+		// yiqiao: get name of this hash join
+		string conditions_str;
+		for (size_t i = 0; i < op.conditions.size(); ++i) {
+			auto &con = op.conditions[i];
+			conditions_str += con.left->GetName() + "=" + con.right->GetName();
+			if (i != op.conditions.size() - 1) conditions_str += ", ";
+		}
+		const void *address = static_cast<const void *>(&op);
+		std::stringstream ss;
+		ss << address;
+		merge_name = conditions_str + " - " + ss.str();
 	}
 
 	inline idx_t Count() const {
@@ -97,6 +109,7 @@ public:
 	}
 
 	unique_ptr<GlobalSortedTable> table;
+	string merge_name;
 };
 
 unique_ptr<GlobalSinkState> PhysicalPiecewiseMergeJoin::GetGlobalSinkState(ClientContext &context) const {
@@ -113,8 +126,11 @@ SinkResultType PhysicalPiecewiseMergeJoin::Sink(ExecutionContext &context, DataC
 	auto &gstate = input.global_state.Cast<MergeJoinGlobalState>();
 	auto &lstate = input.local_state.Cast<MergeJoinLocalState>();
 
+	Profiler profiler;
+	profiler.Start();
 	gstate.Sink(chunk, lstate);
-
+	BeeProfiler::Get().InsertStatRecord("[SortMergeJoin - Sink - " + gstate.merge_name + "]", profiler.Elapsed());
+	BeeProfiler::Get().InsertStatRecord("[SortMergeJoin - Sink - " + gstate.merge_name + "] #Tuples", chunk.size());
 	return SinkResultType::NEED_MORE_INPUT;
 }
 
@@ -473,43 +489,76 @@ static idx_t MergeJoinComplexBlocksEqual(BlockMergeInfo &l, BlockMergeInfo &r, i
 	const auto entry_size = l.state.sort_layout.entry_size;
 
 	idx_t result_count = 0;
+	idx_t prev_left_end = 0;
+	int hit = false;
 	while (true) {
-		int comp_res;
-		if (all_constant) {
-			comp_res = FastMemcmp(l_ptr, r_ptr, cmp_size);
-		} else {
-			lread.entry_idx = l.entry_idx;
-			rread.entry_idx = r.entry_idx;
-			comp_res = Comparators::CompareTuple(lread, rread, l_ptr, r_ptr, l.state.sort_layout, external);
-		}
-
-		if (comp_res == 0) {
-			// equal: found match
+		if (hit == 0 && l.entry_idx < prev_left_end) {
+			// found match
 			l.result.set_index(result_count, sel_t(l.entry_idx));
 			r.result.set_index(result_count, sel_t(r.entry_idx));
 			result_count++;
-
-			// TODO: this is a bug to fix.
-			r.entry_idx++;
-			if (r.entry_idx >= r.not_null) {
+			// move left side forward
+			l.entry_idx++;
+			l_ptr += entry_size;
+			if (result_count == STANDARD_VECTOR_SIZE) {
+				// out of space!
 				break;
 			}
-			r_ptr += entry_size;
-		} else {
-			bool left_less = comp_res < 0;
-			bool right_less = 1 - left_less;
+			continue;
+		}
 
-			l.entry_idx += left_less;
-			if (l.entry_idx >= l.not_null) {
-				break;
+		if (l.entry_idx < l.not_null) {
+			int comp_res;
+			if (all_constant) {
+				comp_res = FastMemcmp(l_ptr, r_ptr, cmp_size);
+			} else {
+				lread.entry_idx = l.entry_idx;
+				rread.entry_idx = r.entry_idx;
+				comp_res = Comparators::CompareTuple(lread, rread, l_ptr, r_ptr, l.state.sort_layout, external);
 			}
-			l_ptr += left_less * entry_size;
 
-			r.entry_idx += right_less;
-			if (r.entry_idx >= r.not_null) {
-				break;
+			if (comp_res == 0) {
+				// found match
+				l.result.set_index(result_count, sel_t(l.entry_idx));
+				r.result.set_index(result_count, sel_t(r.entry_idx));
+				result_count++;
+				// move left side forward
+				l.entry_idx++;
+				l_ptr += entry_size;
+				if (result_count == STANDARD_VECTOR_SIZE) {
+					// out of space!
+					break;
+				}
+				continue;
+			} else if (comp_res < 0) {
+				// left side smaller: move left side forward
+				l.entry_idx++;
+				l_ptr += entry_size;
+				prev_left_index = l.entry_idx;
+				continue;
 			}
-			r_ptr += right_less * entry_size;
+		}
+
+		prev_left_end = l.entry_idx;
+
+		// right side smaller, or left side exhausted: move right pointer forward reset left side to start
+		r.entry_idx++;
+		if (r.entry_idx >= r.not_null) {
+			break;
+		}
+		r_ptr += entry_size;
+
+		l_ptr = l_start + entry_size * prev_left_index;
+		l.entry_idx = prev_left_index;
+
+		if (l.entry_idx < prev_left_end) {
+			if (all_constant) {
+				hit = FastMemcmp(l_ptr, r_ptr, cmp_size);
+			} else {
+				lread.entry_idx = l.entry_idx;
+				rread.entry_idx = r.entry_idx;
+				hit = Comparators::CompareTuple(lread, rread, l_ptr, r_ptr, l.state.sort_layout, external);
+			}
 		}
 	}
 	return result_count;
@@ -733,29 +782,50 @@ OperatorResultType PhysicalPiecewiseMergeJoin::ExecuteInternal(ExecutionContext 
                                                                OperatorState &state) const {
 	auto &gstate = sink_state->Cast<MergeJoinGlobalState>();
 
+	Profiler profiler;
+	profiler.Start();
+
 	if (gstate.Count() == 0) {
 		// empty RHS
 		if (!EmptyResultIfRHSIsEmpty()) {
 			ConstructEmptyJoinResult(join_type, gstate.table->has_null, input, chunk);
+			BeeProfiler::Get().InsertStatRecord("[SortMergeJoin - Match - " + gstate.merge_name + "]",
+			                                    profiler.Elapsed());
+			BeeProfiler::Get().InsertStatRecord("[SortMergeJoin - Match - " + gstate.merge_name + "] #Tuples",
+			                                    chunk.size());
 			return OperatorResultType::NEED_MORE_INPUT;
 		} else {
+			BeeProfiler::Get().InsertStatRecord("[SortMergeJoin - Match - " + gstate.merge_name + "]",
+			                                    profiler.Elapsed());
+			BeeProfiler::Get().InsertStatRecord("[SortMergeJoin - Match - " + gstate.merge_name + "] #Tuples",
+			                                    chunk.size());
 			return OperatorResultType::FINISHED;
 		}
 	}
 
 	input.Verify();
+	OperatorResultType ret;
 	switch (join_type) {
 		case JoinType::SEMI:
 		case JoinType::ANTI:
 		case JoinType::MARK:
 			// simple joins can have max STANDARD_VECTOR_SIZE matches per chunk
 			ResolveSimpleJoin(context, input, chunk, state);
+			BeeProfiler::Get().InsertStatRecord("[SortMergeJoin - Match - " + gstate.merge_name + "]",
+			                                    profiler.Elapsed());
+			BeeProfiler::Get().InsertStatRecord("[SortMergeJoin - Match - " + gstate.merge_name + "] #Tuples",
+			                                    chunk.size());
 			return OperatorResultType::NEED_MORE_INPUT;
 		case JoinType::LEFT:
 		case JoinType::INNER:
 		case JoinType::RIGHT:
 		case JoinType::OUTER:
-			return ResolveComplexJoin(context, input, chunk, state);
+			ret = ResolveComplexJoin(context, input, chunk, state);
+			BeeProfiler::Get().InsertStatRecord("[SortMergeJoin - Match - " + gstate.merge_name + "]",
+			                                    profiler.Elapsed());
+			BeeProfiler::Get().InsertStatRecord("[SortMergeJoin - Match - " + gstate.merge_name + "] #Tuples",
+			                                    chunk.size());
+			return ret;
 		default:
 			throw NotImplementedException("Unimplemented type for piecewise merge loop join!");
 	}
@@ -792,11 +862,18 @@ SourceResultType PhysicalPiecewiseMergeJoin::GetData(ExecutionContext &context, 
 	auto &sink = sink_state->Cast<MergeJoinGlobalState>();
 	auto &state = input.global_state.Cast<PiecewiseJoinScanState>();
 
+	Profiler profiler;
+	profiler.Start();
+
 	lock_guard<mutex> l(state.lock);
 	if (!state.scanner) {
 		// Initialize scanner (if not yet initialized)
 		auto &sort_state = sink.table->global_sort_state;
 		if (sort_state.sorted_blocks.empty()) {
+			BeeProfiler::Get().InsertStatRecord("[SortMergeJoin - OuterJoin - " + sink.merge_name + "]",
+			                                    profiler.Elapsed());
+			BeeProfiler::Get().InsertStatRecord("[SortMergeJoin - OuterJoin - " + sink.merge_name + "] #Tuples",
+			                                    result.size());
 			return SourceResultType::FINISHED;
 		}
 		state.scanner = make_uniq<PayloadScanner>(*sort_state.sorted_blocks[0]->payload_data, sort_state);
@@ -844,6 +921,8 @@ SourceResultType PhysicalPiecewiseMergeJoin::GetData(ExecutionContext &context, 
 		}
 	}
 
+	BeeProfiler::Get().InsertStatRecord("[SortMergeJoin - OuterJoin - " + sink.merge_name + "]", profiler.Elapsed());
+	BeeProfiler::Get().InsertStatRecord("[SortMergeJoin - OuterJoin - " + sink.merge_name + "] #Tuples", result.size());
 	return result.size() == 0 ? SourceResultType::FINISHED : SourceResultType::HAVE_MORE_OUTPUT;
 }
 
