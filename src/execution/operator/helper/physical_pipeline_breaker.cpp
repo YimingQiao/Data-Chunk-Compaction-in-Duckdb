@@ -98,14 +98,17 @@ SourceResultType PhysicalPipelineBreaker::GetData(ExecutionContext &context, Dat
 	auto &lstate = input.local_state.Cast<PipelineBreakerSourceState>();
 
 	if (!sink.initialized) {
-		sink.intermediate_table->InitializeScan(sink.scan_state);
-		sink.initialized = true;
+		lock_guard<mutex> lock(sink.glock);
+		if (!sink.initialized) {
+			sink.intermediate_table->InitializeScan(sink.scan_state);
+			sink.initialized = true;
+		}
 	}
 
-	Profiler profiler;
-	profiler.Start();
+	//	Profiler profiler;
+	//	profiler.Start();
 	sink.intermediate_table->Scan(sink.scan_state, lstate.local_scan_state, chunk);
-	BeeProfiler::Get().InsertStatRecord("[PhysicalPipelineBreaker::GetData] scan", profiler.Elapsed());
+	// BeeProfiler::Get().InsertStatRecord("[PhysicalPipelineBreaker::GetData] scan", profiler.Elapsed());
 
 	return chunk.size() == 0 ? SourceResultType::FINISHED : SourceResultType::HAVE_MORE_OUTPUT;
 }
