@@ -138,32 +138,32 @@ bool Pipeline::ScheduleParallel(shared_ptr<Event> &event) {
 	// Hash Table Partition & build
 	if ((source->GetName() == "SEQ_SCAN " || source->GetName() == "READ_PARQUET ") && sink->GetName() == "HASH_JOIN" &&
 	    operators.empty()) {
-		max_threads = 1;
+		max_threads = 16;
 	}
 
 	// Left Deep Probing
 	if (source->GetName() == "SEQ_SCAN " && sink->GetName() == "EXPLAIN_ANALYZE" && !operators.empty()) {
-		max_threads = 2;
+		max_threads = 64;
 	}
 
 	if (source->GetName() == "BREAKER") {
-		max_threads = 2;
+		max_threads = 64;
 	}
 
 	if ((source->GetName() == "SEQ_SCAN " || source->GetName() == "READ_PARQUET ") && sink->GetName() == "BREAKER") {
-		max_threads = 1;
+		max_threads = 32;
 	}
 
 	// Hash Table Probing for Next Hash Table Building
 	if ((source->GetName() == "SEQ_SCAN " || source->GetName() == "READ_PARQUET ") && sink->GetName() == "HASH_JOIN" &&
 	    !operators.empty()) {
-		max_threads = 1;
+		max_threads = 16;
 	}
 
 	// asof join
 	{
 		if ((source->GetName() == "ASOF_JOIN") || sink->GetName() == "ASOF_JOIN") {
-			max_threads = 32;
+			max_threads = 16;
 		}
 
 		if ((source->GetName() == "ASOF_JOIN") && sink->GetName() == "EXPLAIN_ANALYZE") {
@@ -173,6 +173,22 @@ bool Pipeline::ScheduleParallel(shared_ptr<Event> &event) {
 	// iejoin
 	{
 		if ((source->GetName() == "IE_JOIN") || sink->GetName() == "IE_JOIN") {
+			max_threads = 4;
+		}
+		if ((source->GetName() == "IE_JOIN") && sink->GetName() == "EXPLAIN_ANALYZE") {
+			max_threads = 64;
+		}
+		if ((source->GetName() == "IE_JOIN") && sink->GetName() == "HASH_JOIN") {
+			max_threads = 32;
+		}
+	}
+	// sort-merge join
+	{
+		if (sink->GetName() == "PIECEWISE_MERGE_JOIN") {
+			max_threads = 32;
+		}
+
+		if (sink->GetName() == "PIECEWISE_MERGE_JOIN" && !operators.empty()) {
 			max_threads = 32;
 		}
 	}
@@ -182,7 +198,14 @@ bool Pipeline::ScheduleParallel(shared_ptr<Event> &event) {
 		auto now = std::chrono::system_clock::now();
 		auto duration = now.time_since_epoch();
 		auto milliseconds = std::chrono::duration_cast<std::chrono::milliseconds>(duration).count() % 1000000;
-		std::cerr << " [Open] " + source->GetName() + " --> " + sink->GetName() +
+
+		std::string source_name = source->GetName();
+		if (source_name == "SEQ_SCAN ") {
+			string details = source->ParamsToString();
+			idx_t pos = details.find('\n');
+			source_name += "(" + details.substr(0, pos) + ")";
+		}
+		std::cerr << " [Open] " + source_name + " --> " + sink->GetName() +
 		                 "\t #task/#thread: " + std::to_string(max_threads) + "/" + std::to_string(active_threads) +
 		                 "\tTick: " + std::to_string(milliseconds) + "ms\n";
 	}

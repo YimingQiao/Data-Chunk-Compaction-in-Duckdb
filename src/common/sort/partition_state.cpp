@@ -679,7 +679,7 @@ void PartitionMergeEvent::Schedule() {
 	// idx_t num_threads = ts.NumberOfThreads();
 	// yiqiao: set the partition threads
 	const idx_t active_threads = TaskScheduler::GetScheduler(context).NumberOfThreads();
-	const idx_t num_threads = 32;
+	const idx_t num_threads = 16;
 	auto now = std::chrono::system_clock::now();
 	auto duration = now.time_since_epoch();
 	auto milliseconds = std::chrono::duration_cast<std::chrono::milliseconds>(duration).count() % 1000000;
