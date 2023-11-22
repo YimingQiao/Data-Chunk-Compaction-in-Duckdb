@@ -94,9 +94,18 @@ public:
 	TaskExecutionResult ExecuteTask(TaskExecutionMode mode) override {
 		// Initialize iejoin sorted and iterate until done
 		auto &global_sort_state = table.global_sort_state;
+
+		Profiler profiler;
+		profiler.Start();
+
 		MergeSorter merge_sorter(global_sort_state, BufferManager::GetBufferManager(context));
 		merge_sorter.PerformInMergeRound();
 		event->FinishTask();
+
+		const void *address = static_cast<const void *>(&global_sort_state.sorted_blocks);
+		std::stringstream ss;
+		ss << address;
+		BeeProfiler::Get().InsertStatRecord("[Sort - " + ss.str() + "]", profiler.Elapsed());
 
 		return TaskExecutionResult::TASK_FINISHED;
 	}
@@ -127,12 +136,14 @@ public:
 		// yiqiao: do not use all threads for sorting, 16/32 is enough!
 		// idx_t num_threads = ts.NumberOfThreads();
 		idx_t active_threads = ts.NumberOfThreads();
-		idx_t num_threads = 4;
+		idx_t num_threads = 48;
 		auto now = std::chrono::system_clock::now();
 		auto duration = now.time_since_epoch();
 		auto milliseconds = std::chrono::duration_cast<std::chrono::milliseconds>(duration).count() % 1000000;
-		std::cerr << " [Open] RangeJoinMergeEvent\t #task/#thread: " + std::to_string(num_threads) + "/" +
-		                 std::to_string(active_threads) + "\tTick: " + std::to_string(milliseconds) + "ms\n";
+
+		string address = "0x" + std::to_string((uint64_t)&table.global_sort_state.sorted_blocks);
+		std::cerr << " [Open] RangeJoinMergeEvent\t" + address + "\t#task/#thread: " + std::to_string(num_threads) +
+		                 "/" + std::to_string(active_threads) + "\tTick: " + std::to_string(milliseconds) + "ms\n";
 
 		vector<shared_ptr<Task>> iejoin_tasks;
 		for (idx_t tnum = 0; tnum < num_threads; tnum++) {
