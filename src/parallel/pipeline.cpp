@@ -157,7 +157,7 @@ bool Pipeline::ScheduleParallel(shared_ptr<Event> &event) {
 	// Hash Table Probing for Next Hash Table Building
 	if ((source->GetName() == "SEQ_SCAN " || source->GetName() == "READ_PARQUET ") && sink->GetName() == "HASH_JOIN" &&
 	    !operators.empty()) {
-		max_threads = 16;
+		max_threads = 32;
 	}
 
 	// asof join
@@ -176,7 +176,7 @@ bool Pipeline::ScheduleParallel(shared_ptr<Event> &event) {
 			max_threads = 4;
 		}
 		if ((source->GetName() == "IE_JOIN") && sink->GetName() == "EXPLAIN_ANALYZE") {
-			max_threads = 64;
+			max_threads = 4;
 		}
 		if ((source->GetName() == "IE_JOIN") && sink->GetName() == "HASH_JOIN") {
 			max_threads = 32;

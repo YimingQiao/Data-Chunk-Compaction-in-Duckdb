@@ -12,41 +12,79 @@ std::string s3_access_key = "+uSXS1yGwBP+wfoaqJrQ71/Mu7WPZbUNABDy2c0h";
 //  "CREATE TABLE type (type INTEGER, info VARCHAR);"
 void GenDatabase(duckdb::Connection &con) {
 	// database setting
-	uint64_t stu_n = 5e7;
-	uint64_t major_n = 5e6;
-	uint64_t room_n = 5e6;
-
-	// insert into student, use mt to generate tuples
+	const int probing_size = 5e7;
+	const int building_size = 5e6;
 	{
+		// random queries
+		//		con.Query(
+		//		    "CREATE OR REPLACE TABLE student AS "
+		//		    "SELECT "
+		//		    "    CAST((RANDOM() * CAST(%d AS INT)) AS INT) AS stu_id, "
+		//		    "    CAST((RANDOM() * CAST(%d AS INT)) AS INT) AS major_id, "
+		//		    "    CAST((RANDOM() * 100) AS TINYINT) AS age "
+		//		    "FROM generate_series(1, CAST(%d AS INT)) vals(stu_id);",
+		//		    probing_size, building_size, probing_size);
+		//
+		//		con.Query(
+		//		    "CREATE OR REPLACE TABLE department AS "
+		//		    "SELECT "
+		//		    "    CAST((RANDOM() * CAST(%d AS INT)) AS INT) AS major_id, "
+		//		    "    'major_' || (major_id) AS name "
+		//		    "FROM generate_series(1, CAST(%d AS INT)) vals(major_id);",
+		//		    building_size, building_size);
+		//
+		//		con.Query(
+		//		    "CREATE OR REPLACE TABLE room AS "
+		//		    "SELECT "
+		//		    "    CAST((RANDOM() * CAST(%d AS INT)) AS INT) AS room_id, "
+		//		    "    CAST((RANDOM() * CAST(%d AS INT)) AS INT) AS stu_id, "
+		//		    "    CAST((RANDOM() * CAST(%d AS INT)) AS INT) AS type "
+		//		    "FROM generate_series(1, CAST(%d AS INT)) vals(room_id);",
+		//		    probing_size, probing_size, building_size, probing_size);
+		//
+		//		con.Query(
+		//		    "CREATE OR REPLACE TABLE type AS "
+		//		    "SELECT "
+		//		    "    CAST((RANDOM() * CAST(%d AS INT)) AS INT) AS type, "
+		//		    "    'room_type_' || type AS info "
+		//		    "FROM generate_series(1, CAST(%d AS INT)) vals(type);",
+		//		    building_size, building_size);
+	}
+	{
+		// sequential queries
 		con.Query(
 		    "CREATE OR REPLACE TABLE student AS "
 		    "SELECT "
 		    "    CAST(stu_id AS INT) AS stu_id, "
-		    "    CAST((RANDOM() * CAST(5e6 AS INT)) AS INT) AS major_id, "
+		    "    CAST((RANDOM() * CAST(%d AS INT)) AS INT) AS major_id, "
 		    "    CAST((RANDOM() * 100) AS TINYINT) AS age "
-		    "FROM generate_series(1,  CAST(5e7 AS INT)) vals(stu_id);");
+		    "FROM generate_series(1,  CAST(%d AS INT)) vals(stu_id);",
+		    building_size, probing_size);
 
 		con.Query(
 		    "CREATE OR REPLACE TABLE department AS "
 		    "SELECT "
 		    "    CAST(major_id AS INT) AS major_id, "
 		    "    'major_' || (major_id) AS name "
-		    "FROM generate_series(1,  CAST(5e6 AS INT)) vals(major_id);");
+		    "FROM generate_series(1,  CAST(%d AS INT)) vals(major_id);",
+		    building_size);
 
 		con.Query(
 		    "CREATE OR REPLACE TABLE room AS "
 		    "SELECT "
 		    "    CAST(room_id AS INT) AS room_id, "
 		    "    CAST(room_id AS INT) AS stu_id, "
-		    "    CAST((RANDOM() * CAST(5e6 AS INT)) AS INT) AS type "
-		    "FROM generate_series(1,  CAST(5e7 AS INT)) vals(room_id);");
+		    "    CAST((RANDOM() * CAST(%d AS INT)) AS INT) AS type "
+		    "FROM generate_series(1,  CAST(%d AS INT)) vals(room_id);",
+		    building_size, probing_size);
 
 		con.Query(
 		    "CREATE OR REPLACE TABLE type AS "
 		    "SELECT "
 		    "    CAST(type AS INT) AS type, "
 		    "    'room_type_' || type AS info "
-		    "FROM generate_series(1,  CAST(5e6 AS INT)) vals(type);");
+		    "FROM generate_series(1,  CAST(%d AS INT)) vals(type);",
+		    building_size);
 	}
 	// We export the tables to disk in parquet format, separately.
 	{
@@ -99,7 +137,7 @@ int main() {
 	duckdb::DuckDB db(db_name);
 	duckdb::Connection con(db);
 
-	// GenDatabase(con);
+	GenDatabase(con);
 
 	// ------------------------------------ DuckDB Settings -------------------------------------------------
 	// set num of thread, we cannot use 128 threads because 2 threads are left for Perf.
@@ -141,10 +179,10 @@ int main() {
 	}
 
 	// ------------------------------------------ Query -----------------------------------------------------
-	// hash join or sort merge join?
-	con.Query("SET prefer_range_joins=true;");
-	// Hash Join
+	// Hash Join & Sort-Merge Join
 	{
+		// hash join or sort-merge join?
+		// con.Query("SET prefer_range_joins=true;");
 		// BUSHY join query
 		{
 			std::string bushy_query =
@@ -154,7 +192,7 @@ int main() {
 			    "(SELECT student.stu_id, department.major_id "
 			    "	FROM student, department WHERE student.major_id = department.major_id) AS t1, "
 			    "(SELECT room.stu_id, room.room_id, type.type FROM room, type WHERE room.type = type.type) "
-			    "	AS t2, WHERE t1.stu_id = t2.stu_id AND t1.stu_id <= 10000000;";
+			    "	AS t2, WHERE t1.stu_id = t2.stu_id;";
 
 			ExecuteQuery(con, bushy_query, 2, 1);
 		}
@@ -166,9 +204,9 @@ int main() {
 			    "SELECT student.stu_id, department.major_id, room.room_id, type.type "
 			    "FROM student, department, room, type "
 			    "WHERE student.stu_id = room.stu_id AND student.major_id = department.major_id AND room.type = "
-			    "type.type AND student.stu_id <= 10000000;";
+			    "type.type;";
 
-			// ExecuteQuery(con, query, 1, 1);
+			ExecuteQuery(con, query, 2, 1);
 		}
 	}
 
@@ -182,7 +220,7 @@ int main() {
 			    "FROM student, room, department, type "
 			    "WHERE student.stu_id >= room.stu_id AND student.stu_id <= room.stu_id "
 			    "AND student.major_id >= department.major_id AND student.major_id <= department.major_id "
-			    "AND room.type >= type.type AND room.type <= type.type;";
+			    "AND room.type >= type.type AND room.type <= type.type AND student.stu_id <= 10000000;";
 
 			// ExecuteQuery(con, query, 2, 1);
 		}
@@ -198,7 +236,7 @@ int main() {
 			    "department.major_id) AS t1, "
 			    "(SELECT room.stu_id, room.room_id, type.type FROM room, type WHERE room.type >= type.type AND "
 			    "room.type <= type.type) AS t2, "
-			    "WHERE t1.stu_id >= t2.stu_id AND t1.stu_id <= t2.stu_id;";
+			    "WHERE t1.stu_id >= t2.stu_id AND t1.stu_id <= t2.stu_id AND t1.stu_id <= 10000000;";
 
 			// ExecuteQuery(con, bushy_query, 2, 1);
 		}
