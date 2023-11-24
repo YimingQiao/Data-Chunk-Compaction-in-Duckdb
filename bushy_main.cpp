@@ -87,32 +87,32 @@ void GenDatabase(duckdb::Connection &con) {
 		    "FROM generate_series(1,  CAST(" +
 		    std::to_string(probing_size) + " AS INT)) vals(room_id);");
 
-		con.Query(
+		auto res = con.Query(
 		    "CREATE OR REPLACE TABLE type AS "
 		    "SELECT "
 		    "    CAST(type AS INT) AS type, "
 		    "    'room_type_' || type AS info "
 		    "FROM generate_series(1,  CAST(" +
 		    std::to_string(building_size) + " AS INT)) vals(type);");
+	}
 
-		// We export the tables to disk in parquet format, separately.
-		{
-			//			con.Query("COPY student TO 'student.parquet' (FORMAT PARQUET);");
-			//			con.Query("COPY department TO 'department.parquet' (FORMAT PARQUET);");
-			//			con.Query("COPY room TO 'room.parquet' (FORMAT PARQUET);");
-			//			con.Query("COPY type TO 'type.parquet' (FORMAT PARQUET);");
-		}
-		// export to S3, in parquet format
-		{
-			con.Query("SET s3_region='ap-southeast-1';");
-			con.Query("SET s3_access_key_id=" + s3_access_key_id + ";");
-			con.Query("SET s3_secret_access_key=" + s3_access_key + ";");
+	// We export the tables to disk in parquet format, separately.
+	{
+		con.Query("COPY student TO 'student.parquet' (FORMAT PARQUET);");
+		con.Query("COPY department TO 'department.parquet' (FORMAT PARQUET);");
+		con.Query("COPY room TO 'room.parquet' (FORMAT PARQUET);");
+		con.Query("COPY type TO 'type.parquet' (FORMAT PARQUET);");
+	}
+	// export to S3, in parquet format
+	{
+		con.Query("SET s3_region='ap-southeast-1';");
+		con.Query("SET s3_access_key_id=" + s3_access_key_id + ";");
+		con.Query("SET s3_secret_access_key=" + s3_access_key + ";");
 
-			con.Query("COPY student TO 's3://parquets/student.parquet';");
-			con.Query("COPY department TO 's3://parquets/department.parquet';");
-			con.Query("COPY room TO 's3://parquets/room.parquet';");
-			con.Query("COPY type TO 's3://parquets/type.parquet';");
-		}
+		con.Query("COPY student TO 's3://parquets/student.parquet';");
+		con.Query("COPY department TO 's3://parquets/department.parquet';");
+		con.Query("COPY room TO 's3://parquets/room.parquet';");
+		con.Query("COPY type TO 's3://parquets/type.parquet';");
 	}
 }
 
@@ -147,7 +147,7 @@ int main() {
 	duckdb::DuckDB db(db_name);
 	duckdb::Connection con(db);
 
-	// GenDatabase(con);
+	GenDatabase(con);
 
 	// ------------------------------------ DuckDB Settings -------------------------------------------------
 	// set num of thread, we cannot use 128 threads because 2 threads are left for Perf.
