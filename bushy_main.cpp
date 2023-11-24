@@ -14,95 +14,105 @@ void GenDatabase(duckdb::Connection &con) {
 	// database setting
 	const int probing_size = 5e7;
 	const int building_size = 5e6;
+
+	// random queries
 	{
-		// random queries
 		//		con.Query(
 		//		    "CREATE OR REPLACE TABLE student AS "
 		//		    "SELECT "
-		//		    "    CAST((RANDOM() * CAST(%d AS INT)) AS INT) AS stu_id, "
-		//		    "    CAST((RANDOM() * CAST(%d AS INT)) AS INT) AS major_id, "
+		//		    "    CAST(stu_id AS INT) AS stu_id, "
+		//		    "    CAST((RANDOM() * CAST(" +
+		//		    std::to_string(building_size) +
+		//		    " AS INT)) AS INT) AS major_id, "
 		//		    "    CAST((RANDOM() * 100) AS TINYINT) AS age "
-		//		    "FROM generate_series(1, CAST(%d AS INT)) vals(stu_id);",
-		//		    probing_size, building_size, probing_size);
+		//		    "FROM generate_series(1,  CAST(" +
+		//		    std::to_string(probing_size) + " AS INT)) vals(stu_id);");
 		//
 		//		con.Query(
 		//		    "CREATE OR REPLACE TABLE department AS "
 		//		    "SELECT "
-		//		    "    CAST((RANDOM() * CAST(%d AS INT)) AS INT) AS major_id, "
+		//		    "    CAST(major_id AS INT) AS major_id, "
 		//		    "    'major_' || (major_id) AS name "
-		//		    "FROM generate_series(1, CAST(%d AS INT)) vals(major_id);",
-		//		    building_size, building_size);
+		//		    "FROM generate_series(1,  CAST(" +
+		//		    std::to_string(building_size) + " AS INT)) vals(major_id);");
 		//
 		//		con.Query(
 		//		    "CREATE OR REPLACE TABLE room AS "
 		//		    "SELECT "
-		//		    "    CAST((RANDOM() * CAST(%d AS INT)) AS INT) AS room_id, "
-		//		    "    CAST((RANDOM() * CAST(%d AS INT)) AS INT) AS stu_id, "
-		//		    "    CAST((RANDOM() * CAST(%d AS INT)) AS INT) AS type "
-		//		    "FROM generate_series(1, CAST(%d AS INT)) vals(room_id);",
-		//		    probing_size, probing_size, building_size, probing_size);
+		//		    "    CAST(room_id AS INT) AS room_id, "
+		//		    "    CAST(room_id AS INT) AS stu_id, "
+		//		    "    CAST((RANDOM() * CAST(" +
+		//		    std::to_string(building_size) +
+		//		    " AS INT)) AS INT) AS type "
+		//		    "FROM generate_series(1,  CAST(" +
+		//		    std::to_string(probing_size) + " AS INT)) vals(room_id);");
 		//
 		//		con.Query(
 		//		    "CREATE OR REPLACE TABLE type AS "
 		//		    "SELECT "
-		//		    "    CAST((RANDOM() * CAST(%d AS INT)) AS INT) AS type, "
+		//		    "    CAST(type AS INT) AS type, "
 		//		    "    'room_type_' || type AS info "
-		//		    "FROM generate_series(1, CAST(%d AS INT)) vals(type);",
-		//		    building_size, building_size);
+		//		    "FROM generate_series(1,  CAST(" +
+		//		    std::to_string(building_size) + " AS INT)) vals(type);");
 	}
+	// sequential queries
 	{
-		// sequential queries
 		con.Query(
 		    "CREATE OR REPLACE TABLE student AS "
 		    "SELECT "
 		    "    CAST(stu_id AS INT) AS stu_id, "
-		    "    CAST((RANDOM() * CAST(%d AS INT)) AS INT) AS major_id, "
+		    "    CAST((RANDOM() * CAST(" +
+		    std::to_string(building_size) +
+		    " AS INT)) AS INT) AS major_id, "
 		    "    CAST((RANDOM() * 100) AS TINYINT) AS age "
-		    "FROM generate_series(1,  CAST(%d AS INT)) vals(stu_id);",
-		    building_size, probing_size);
+		    "FROM generate_series(1,  CAST(" +
+		    std::to_string(probing_size) + " AS INT)) vals(stu_id);");
 
 		con.Query(
 		    "CREATE OR REPLACE TABLE department AS "
 		    "SELECT "
 		    "    CAST(major_id AS INT) AS major_id, "
 		    "    'major_' || (major_id) AS name "
-		    "FROM generate_series(1,  CAST(%d AS INT)) vals(major_id);",
-		    building_size);
+		    "FROM generate_series(1,  CAST(" +
+		    std::to_string(building_size) + " AS INT)) vals(major_id);");
 
 		con.Query(
 		    "CREATE OR REPLACE TABLE room AS "
 		    "SELECT "
 		    "    CAST(room_id AS INT) AS room_id, "
 		    "    CAST(room_id AS INT) AS stu_id, "
-		    "    CAST((RANDOM() * CAST(%d AS INT)) AS INT) AS type "
-		    "FROM generate_series(1,  CAST(%d AS INT)) vals(room_id);",
-		    building_size, probing_size);
+		    "    CAST((RANDOM() * CAST(" +
+		    std::to_string(building_size) +
+		    " AS INT)) AS INT) AS type "
+		    "FROM generate_series(1,  CAST(" +
+		    std::to_string(probing_size) + " AS INT)) vals(room_id);");
 
 		con.Query(
 		    "CREATE OR REPLACE TABLE type AS "
 		    "SELECT "
 		    "    CAST(type AS INT) AS type, "
 		    "    'room_type_' || type AS info "
-		    "FROM generate_series(1,  CAST(%d AS INT)) vals(type);",
-		    building_size);
-	}
-	// We export the tables to disk in parquet format, separately.
-	{
-		con.Query("COPY student TO 'student.parquet' (FORMAT PARQUET);");
-		con.Query("COPY department TO 'department.parquet' (FORMAT PARQUET);");
-		con.Query("COPY room TO 'room.parquet' (FORMAT PARQUET);");
-		con.Query("COPY type TO 'type.parquet' (FORMAT PARQUET);");
-	}
-	// export to S3, in parquet format
-	{
-		con.Query("SET s3_region='ap-southeast-1';");
-		con.Query("SET s3_access_key_id=" + s3_access_key_id + ";");
-		con.Query("SET s3_secret_access_key=" + s3_access_key + ";");
+		    "FROM generate_series(1,  CAST(" +
+		    std::to_string(building_size) + " AS INT)) vals(type);");
 
-		con.Query("COPY student TO 's3://parquets/student.parquet';");
-		con.Query("COPY department TO 's3://parquets/department.parquet';");
-		con.Query("COPY room TO 's3://parquets/room.parquet';");
-		con.Query("COPY type TO 's3://parquets/type.parquet';");
+		// We export the tables to disk in parquet format, separately.
+		{
+			//			con.Query("COPY student TO 'student.parquet' (FORMAT PARQUET);");
+			//			con.Query("COPY department TO 'department.parquet' (FORMAT PARQUET);");
+			//			con.Query("COPY room TO 'room.parquet' (FORMAT PARQUET);");
+			//			con.Query("COPY type TO 'type.parquet' (FORMAT PARQUET);");
+		}
+		// export to S3, in parquet format
+		{
+			con.Query("SET s3_region='ap-southeast-1';");
+			con.Query("SET s3_access_key_id=" + s3_access_key_id + ";");
+			con.Query("SET s3_secret_access_key=" + s3_access_key + ";");
+
+			con.Query("COPY student TO 's3://parquets/student.parquet';");
+			con.Query("COPY department TO 's3://parquets/department.parquet';");
+			con.Query("COPY room TO 's3://parquets/room.parquet';");
+			con.Query("COPY type TO 's3://parquets/type.parquet';");
+		}
 	}
 }
 
@@ -137,7 +147,7 @@ int main() {
 	duckdb::DuckDB db(db_name);
 	duckdb::Connection con(db);
 
-	GenDatabase(con);
+	// GenDatabase(con);
 
 	// ------------------------------------ DuckDB Settings -------------------------------------------------
 	// set num of thread, we cannot use 128 threads because 2 threads are left for Perf.
@@ -150,8 +160,8 @@ int main() {
 	{ con.Query("PRAGMA disable_object_cache;"); }
 
 	// ---------------------------------------- Load Data --------------------------------------------------
-	// loading table into memory, using the temp table (so that we are sure the data is in memory, even if DuckDB is not
-	// in in-memory mode.)
+	// loading table into memory, using the temp table (so that we are sure the data is in memory, even if DuckDB is
+	// not in in-memory mode.)
 	{
 		con.Query("CREATE TEMPORARY TABLE student AS SELECT * FROM read_parquet('student.parquet');");
 		con.Query("CREATE TEMPORARY TABLE department AS SELECT * FROM read_parquet('department.parquet');");
@@ -166,7 +176,6 @@ int main() {
 		// con.Query("CREATE VIEW room AS SELECT * FROM read_parquet('room.parquet');");
 		// con.Query("CREATE VIEW type AS SELECT * FROM read_parquet('type.parquet');");
 	}
-	duckdb::BeeProfiler::Get().Clear();
 
 	// Or, leave tables in S3, we create the views
 	{
@@ -177,11 +186,11 @@ int main() {
 		//		con.Query("CREATE VIEW student AS SELECT * FROM read_parquet('s3://parquets/student.parquet');");
 		//		con.Query("CREATE VIEW room AS SELECT * FROM read_parquet('s3://parquets/room.parquet');");
 	}
+	duckdb::BeeProfiler::Get().Clear();
 
 	// ------------------------------------------ Query -----------------------------------------------------
 	// Hash Join & Sort-Merge Join
 	{
-		// hash join or sort-merge join?
 		// con.Query("SET prefer_range_joins=true;");
 		// BUSHY join query
 		{
@@ -194,7 +203,7 @@ int main() {
 			    "(SELECT room.stu_id, room.room_id, type.type FROM room, type WHERE room.type = type.type) "
 			    "	AS t2, WHERE t1.stu_id = t2.stu_id;";
 
-			ExecuteQuery(con, bushy_query, 2, 1);
+			// ExecuteQuery(con, bushy_query, 2, 1);
 		}
 
 		// SEQ join query
@@ -220,7 +229,7 @@ int main() {
 			    "FROM student, room, department, type "
 			    "WHERE student.stu_id >= room.stu_id AND student.stu_id <= room.stu_id "
 			    "AND student.major_id >= department.major_id AND student.major_id <= department.major_id "
-			    "AND room.type >= type.type AND room.type <= type.type AND student.stu_id <= 10000000;";
+			    "AND room.type >= type.type AND room.type <= type.type;";
 
 			// ExecuteQuery(con, query, 2, 1);
 		}
@@ -236,7 +245,7 @@ int main() {
 			    "department.major_id) AS t1, "
 			    "(SELECT room.stu_id, room.room_id, type.type FROM room, type WHERE room.type >= type.type AND "
 			    "room.type <= type.type) AS t2, "
-			    "WHERE t1.stu_id >= t2.stu_id AND t1.stu_id <= t2.stu_id AND t1.stu_id <= 10000000;";
+			    "WHERE t1.stu_id >= t2.stu_id AND t1.stu_id <= t2.stu_id;";
 
 			// ExecuteQuery(con, bushy_query, 2, 1);
 		}

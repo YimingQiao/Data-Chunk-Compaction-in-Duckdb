@@ -172,10 +172,17 @@ bool Pipeline::ScheduleParallel(shared_ptr<Event> &event) {
 	}
 	// iejoin
 	{
-		if ((source->GetName() == "IE_JOIN") || sink->GetName() == "IE_JOIN") {
-			max_threads = 4;
+		if ((source->GetName() == "IE_JOIN") &&
+		    (sink->GetName() == "IE_JOIN" || sink->GetName() == "EXPLAIN_ANALYZE" || sink->GetName() == "BREAKER")) {
+			max_threads = 32;
+			size_t num_pairs = source_state->MaxThreads();
+			if (num_pairs < max_threads) {
+				std::cerr << " [Warning of Redundant Threads] IE JOIN: " << num_pairs << " pairs, " << max_threads
+				          << " threads\n";
+			}
 		}
-		if ((source->GetName() == "IE_JOIN") && sink->GetName() == "EXPLAIN_ANALYZE") {
+		if ((source->GetName() == "SEQ_SCAN " || source->GetName() == "READ_PARQUET") &&
+		    (sink->GetName() == "IE_JOIN")) {
 			max_threads = 4;
 		}
 		if ((source->GetName() == "IE_JOIN") && sink->GetName() == "HASH_JOIN") {

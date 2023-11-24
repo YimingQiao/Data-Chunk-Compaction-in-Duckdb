@@ -862,6 +862,18 @@ public:
 
 		// Ready for action
 		initialized = true;
+
+		// yiqiao: block size
+		for (size_t i = 0; i < left_blocks; ++i) {
+			BeeProfiler::Get().InsertStatRecord(
+			    "[IEJoin - Initialize - " + sink_state.ie_join_name + "] #Tuples" + " Left Block Size",
+			    left_table.BlockSize(i));
+		}
+		for (size_t i = 0; i < right_blocks; ++i) {
+			BeeProfiler::Get().InsertStatRecord(
+			    "[IEJoin - Initialize - " + sink_state.ie_join_name + "] #Tuples" + " Right Block Size",
+			    right_table.BlockSize(i));
+		}
 	}
 
 public:
@@ -902,7 +914,8 @@ public:
 
 		// Spin wait for regular blocks to finish(!)
 		while (completed < pair_count) {
-			std::this_thread::yield();
+			// std::this_thread::yield();
+			return;
 		}
 
 		// Left outer blocks

@@ -102,10 +102,8 @@ public:
 		merge_sorter.PerformInMergeRound();
 		event->FinishTask();
 
-		const void *address = static_cast<const void *>(&global_sort_state.sorted_blocks);
-		std::stringstream ss;
-		ss << address;
-		BeeProfiler::Get().InsertStatRecord("[Sort - " + ss.str() + "]", profiler.Elapsed());
+		string address = "0x" + std::to_string((uint64_t)&global_sort_state);
+		BeeProfiler::Get().InsertStatRecord("[Sort - " + address + "]", profiler.Elapsed());
 
 		return TaskExecutionResult::TASK_FINISHED;
 	}
@@ -141,7 +139,7 @@ public:
 		auto duration = now.time_since_epoch();
 		auto milliseconds = std::chrono::duration_cast<std::chrono::milliseconds>(duration).count() % 1000000;
 
-		string address = "0x" + std::to_string((uint64_t)&table.global_sort_state.sorted_blocks);
+		string address = "0x" + std::to_string((uint64_t)&table.global_sort_state);
 		std::cerr << " [Open] RangeJoinMergeEvent\t" + address + "\t#task/#thread: " + std::to_string(num_threads) +
 		                 "/" + std::to_string(active_threads) + "\tTick: " + std::to_string(milliseconds) + "ms\n";
 
