@@ -1142,3 +1142,6 @@ target_link_libraries(bushy_asof duckdb)
 
 add_executable(bushy_simd bushy_simd.cpp)
 target_link_libraries(bushy_simd duckdb)
+
+add_executable(join_scalability join_scalability.cpp)
+target_link_libraries(join_scalability duckdb)

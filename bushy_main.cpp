@@ -46,7 +46,7 @@ void GenDatabase(duckdb::Connection &con) {
 		//		    std::to_string(building_size) +
 		//		    " AS INT)) AS INT) AS type "
 		//		    "FROM generate_series(1,  CAST(" +
-		//		    std::to_string(probing_size) + " AS INT)) vals(room_id);");
+		//		    std::to_string(building_size) + " AS INT)) vals(room_id);");
 		//
 		//		con.Query(
 		//		    "CREATE OR REPLACE TABLE type AS "
@@ -58,43 +58,50 @@ void GenDatabase(duckdb::Connection &con) {
 	}
 	// sequential queries
 	{
-		con.Query(
+		auto res = con.Query(
 		    "CREATE OR REPLACE TABLE student AS "
 		    "SELECT "
 		    "    CAST(stu_id AS INT) AS stu_id, "
-		    "    CAST((RANDOM() * CAST(" +
+		    "    CAST(RANDOM() * " +
 		    std::to_string(building_size) +
-		    " AS INT)) AS INT) AS major_id, "
-		    "    CAST((RANDOM() * 100) AS TINYINT) AS age "
-		    "FROM generate_series(1,  CAST(" +
-		    std::to_string(probing_size) + " AS INT)) vals(stu_id);");
+		    " AS INT) AS major_id, "
+		    "    CAST(RANDOM() * 100 AS TINYINT) AS age "
+		    "FROM generate_series(1, " +
+		    std::to_string(probing_size) + ") vals(stu_id);");
+		if (res->HasError()) std::cerr << res->GetError() << "\n";
 
-		con.Query(
+		res = con.Query(
 		    "CREATE OR REPLACE TABLE department AS "
 		    "SELECT "
 		    "    CAST(major_id AS INT) AS major_id, "
 		    "    'major_' || (major_id) AS name "
-		    "FROM generate_series(1,  CAST(" +
-		    std::to_string(building_size) + " AS INT)) vals(major_id);");
+		    "FROM generate_series(1, " +
+		    std::to_string(building_size) + ") vals(major_id);");
+		if (res->HasError()) std::cerr << res->GetError() << "\n";
 
-		con.Query(
+		size_t factor = probing_size / building_size;
+		res = con.Query(
 		    "CREATE OR REPLACE TABLE room AS "
 		    "SELECT "
 		    "    CAST(room_id AS INT) AS room_id, "
-		    "    CAST(room_id AS INT) AS stu_id, "
-		    "    CAST((RANDOM() * CAST(" +
+		    "    CAST(room_id * " +
+		    std::to_string(factor) +
+		    " AS INT) AS stu_id, "
+		    "    CAST(RANDOM() * " +
 		    std::to_string(building_size) +
-		    " AS INT)) AS INT) AS type "
-		    "FROM generate_series(1,  CAST(" +
-		    std::to_string(probing_size) + " AS INT)) vals(room_id);");
+		    " AS INT) AS type "
+		    "FROM generate_series(1, " +
+		    std::to_string(building_size) + ") vals(room_id);");
+		if (res->HasError()) std::cerr << res->GetError() << "\n";
 
-		auto res = con.Query(
+		res = con.Query(
 		    "CREATE OR REPLACE TABLE type AS "
 		    "SELECT "
 		    "    CAST(type AS INT) AS type, "
 		    "    'room_type_' || type AS info "
-		    "FROM generate_series(1,  CAST(" +
-		    std::to_string(building_size) + " AS INT)) vals(type);");
+		    "FROM generate_series(1, " +
+		    std::to_string(building_size) + ") vals(type);");
+		if (res->HasError()) std::cerr << res->GetError() << "\n";
 	}
 
 	// We export the tables to disk in parquet format, separately.
@@ -139,8 +146,6 @@ void ExecuteQuery(duckdb::Connection &con, std::string query, size_t running_tim
 				std::cerr << result->GetError() << "\n";
 			}
 		}
-		duckdb::CatProfiler::Get().PrintResults();
-		duckdb::BeeProfiler::Get().Clear();
 	}
 }
 
@@ -149,8 +154,10 @@ int main() {
 	std::string db_name = "";
 	duckdb::DuckDB db(db_name);
 	duckdb::Connection con(db);
+	auto &scheduler = duckdb::ThreadScheduler::Get();
+	using VecStr = std::vector<std::string>;
 
-	GenDatabase(con);
+	// GenDatabase(con);
 
 	// ---------------------------------------- Load Data --------------------------------------------------
 	{
@@ -197,9 +204,6 @@ int main() {
 
 	// ---------------------------- ------- Threads Settings -----------------------------------------------
 	{
-		auto &scheduler = duckdb::ThreadScheduler::Get();
-		using VecStr = std::vector<std::string>;
-
 		// [HashJoin]
 		{
 			// Build Hash Table
@@ -260,7 +264,7 @@ int main() {
 			    "WHERE student.stu_id = room.stu_id AND student.major_id = department.major_id AND room.type = "
 			    "type.type;";
 
-			ExecuteQuery(con, query, 1, 0);
+			ExecuteQuery(con, query, 2, 1);
 		}
 	}
 

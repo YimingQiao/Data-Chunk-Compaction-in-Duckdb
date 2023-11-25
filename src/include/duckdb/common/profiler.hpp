@@ -195,6 +195,10 @@ public:
 		cur_stage_.clear();
 	}
 
+	unordered_map<string, double> &GetStageTimings() {
+		return stage_timings_;
+	}
+
 	void PrintResults() const {
 		for (const auto &pair : stage_timings_) {
 			std::cerr << pair.first << ": " << pair.second << " s\t";
