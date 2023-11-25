@@ -11,6 +11,7 @@
 #include "duckdb/execution/operator/set/physical_recursive_cte.hpp"
 #include "duckdb/main/client_context.hpp"
 #include "duckdb/main/database.hpp"
+#include "duckdb/optimizer/thread_scheduler.hpp"
 #include "duckdb/parallel/pipeline_event.hpp"
 #include "duckdb/parallel/pipeline_executor.hpp"
 #include "duckdb/parallel/task_scheduler.hpp"
@@ -132,73 +133,9 @@ bool Pipeline::ScheduleParallel(shared_ptr<Event> &event) {
 		}
 	}
 
-	// idx_t max_threads = source_state->MaxThreads();
-	idx_t max_threads = 1;
-
-	// Hash Table Partition & build
-	if ((source->GetName() == "SEQ_SCAN " || source->GetName() == "READ_PARQUET ") && sink->GetName() == "HASH_JOIN" &&
-	    operators.empty()) {
-		max_threads = 16;
-	}
-
-	// Left Deep Probing
-	if (source->GetName() == "SEQ_SCAN " && sink->GetName() == "EXPLAIN_ANALYZE" && !operators.empty()) {
-		max_threads = 64;
-	}
-
-	if (source->GetName() == "BREAKER") {
-		max_threads = 64;
-	}
-
-	if ((source->GetName() == "SEQ_SCAN " || source->GetName() == "READ_PARQUET ") && sink->GetName() == "BREAKER") {
-		max_threads = 32;
-	}
-
-	// Hash Table Probing for Next Hash Table Building
-	if ((source->GetName() == "SEQ_SCAN " || source->GetName() == "READ_PARQUET ") && sink->GetName() == "HASH_JOIN" &&
-	    !operators.empty()) {
-		max_threads = 32;
-	}
-
-	// asof join
-	{
-		if ((source->GetName() == "ASOF_JOIN") || sink->GetName() == "ASOF_JOIN") {
-			max_threads = 16;
-		}
-
-		if ((source->GetName() == "ASOF_JOIN") && sink->GetName() == "EXPLAIN_ANALYZE") {
-			max_threads = 32;
-		}
-	}
-	// iejoin
-	{
-		if ((source->GetName() == "IE_JOIN") &&
-		    (sink->GetName() == "IE_JOIN" || sink->GetName() == "EXPLAIN_ANALYZE" || sink->GetName() == "BREAKER")) {
-			max_threads = 32;
-			size_t num_pairs = source_state->MaxThreads();
-			if (num_pairs < max_threads) {
-				std::cerr << " [Warning of Redundant Threads] IE JOIN: " << num_pairs << " pairs, " << max_threads
-				          << " threads\n";
-			}
-		}
-		if ((source->GetName() == "SEQ_SCAN " || source->GetName() == "READ_PARQUET") &&
-		    (sink->GetName() == "IE_JOIN")) {
-			max_threads = 4;
-		}
-		if ((source->GetName() == "IE_JOIN") && sink->GetName() == "HASH_JOIN") {
-			max_threads = 32;
-		}
-	}
-	// sort-merge join
-	{
-		if (sink->GetName() == "PIECEWISE_MERGE_JOIN") {
-			max_threads = 32;
-		}
-
-		if (sink->GetName() == "PIECEWISE_MERGE_JOIN" && !operators.empty()) {
-			max_threads = 32;
-		}
-	}
+	idx_t thread_setting =
+	    ThreadScheduler::Get().GetThreadSetting(source->GetName(), sink->GetName(), !operators.empty());
+	idx_t max_threads = thread_setting ? thread_setting : source_state->MaxThreads();
 
 	if (sink->GetName() != "BATCH_CREATE_TABLE_AS") {
 		size_t active_threads = TaskScheduler::GetScheduler(executor.context).NumberOfThreads();

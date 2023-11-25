@@ -1,0 +1,68 @@
+//===----------------------------------------------------------------------===//
+//                         DuckDB
+//
+// duckdb/optimizer/thread_scheduler.hpp
+//
+//
+//===----------------------------------------------------------------------===//
+
+#pragma once
+
+#include <iostream>
+#include <unordered_map>
+
+#include "duckdb/common/helper.hpp"
+
+namespace duckdb {
+class ThreadScheduler {
+public:
+	static ThreadScheduler &Get() {
+		static ThreadScheduler INSTANCE;
+		return INSTANCE;
+	}
+
+	// setter
+	void SetThreadSetting(size_t value, const vector<string> &sources, const vector<string> &sinks) {
+		SetThreadSetting(value, sources, sinks, false);
+		SetThreadSetting(value, sources, sinks, true);
+	}
+	void SetThreadSetting(size_t value, const vector<string> &sources, const vector<string> &sinks, bool has_operator) {
+		for (auto &sink : sinks) {
+			for (auto &source : sources) {
+				SetThreadSetting(value, source, sink, has_operator);
+			}
+		}
+	}
+	void SetThreadSetting(size_t value, const string &source, const string &sink) {
+		SetThreadSetting(value, source, sink, false);
+		SetThreadSetting(value, source, sink, true);
+	}
+	void SetThreadSetting(size_t value, const string &source, const string &sink, bool has_operator) {
+		string key = GenerateKey(source, sink, has_operator);
+		thread_setting_[key] = value;
+	}
+
+	// getter
+	size_t GetThreadSetting(const string &source, const string &sink, bool has_operator) {
+		string key = GenerateKey(source, sink, has_operator);
+		return thread_setting_[key];
+	}
+
+	void PrintThreadSetting() {
+		for (auto &it : thread_setting_) {
+			std::cout << it.first << " : " << it.second << "\n";
+		}
+	}
+
+	inline string GenerateKey(const string &source, const string &sink, bool has_operator) {
+		if (has_operator) {
+			return source + " -> ... -> " + sink;
+		} else {
+			return source + " -> " + sink;
+		}
+	}
+
+private:
+	unordered_map<string, size_t> thread_setting_;
+};
+}  // namespace duckdb

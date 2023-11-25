@@ -2,6 +2,7 @@
 #include <random>
 
 #include "duckdb.hpp"
+#include "duckdb/optimizer/thread_scheduler.hpp"
 
 std::string s3_access_key_id = "AKIARZ5TMPGJHQ4PFLDP";
 std::string s3_access_key = "+uSXS1yGwBP+wfoaqJrQ71/Mu7WPZbUNABDy2c0h";
@@ -12,8 +13,8 @@ std::string s3_access_key = "+uSXS1yGwBP+wfoaqJrQ71/Mu7WPZbUNABDy2c0h";
 //  "CREATE TABLE type (type INTEGER, info VARCHAR);"
 void GenDatabase(duckdb::Connection &con) {
 	// database setting
-	const int probing_size = 5e7;
-	const int building_size = 5e6;
+	const int probing_size = 2e8;
+	const int building_size = 1e8;
 
 	// random queries
 	{
@@ -138,6 +139,8 @@ void ExecuteQuery(duckdb::Connection &con, std::string query, size_t running_tim
 				std::cerr << result->GetError() << "\n";
 			}
 		}
+		duckdb::CatProfiler::Get().PrintResults();
+		duckdb::BeeProfiler::Get().Clear();
 	}
 }
 
@@ -149,44 +152,86 @@ int main() {
 
 	GenDatabase(con);
 
-	// ------------------------------------ DuckDB Settings -------------------------------------------------
-	// set num of thread, we cannot use 128 threads because 2 threads are left for Perf.
-	{ con.Query("SET threads TO 102;"); }
-
-	// set the allocator flush threshold
-	{ auto res = con.Query("SET allocator_flush_threshold=\"64gb\"; "); }
-
-	// disable the object cache
-	{ con.Query("PRAGMA disable_object_cache;"); }
-
 	// ---------------------------------------- Load Data --------------------------------------------------
-	// loading table into memory, using the temp table (so that we are sure the data is in memory, even if DuckDB is
-	// not in in-memory mode.)
 	{
-		con.Query("CREATE TEMPORARY TABLE student AS SELECT * FROM read_parquet('student.parquet');");
-		con.Query("CREATE TEMPORARY TABLE department AS SELECT * FROM read_parquet('department.parquet');");
-		con.Query("CREATE TEMPORARY TABLE room AS SELECT * FROM read_parquet('room.parquet');");
-		con.Query("CREATE TEMPORARY TABLE type AS SELECT * FROM read_parquet('type.parquet');");
+		// loading table into memory, using the temp table (so that we are sure the data is in memory, even if DuckDB is
+		// not in in-memory mode.)
+		{
+			con.Query("CREATE TEMPORARY TABLE student AS SELECT * FROM read_parquet('student.parquet');");
+			con.Query("CREATE TEMPORARY TABLE department AS SELECT * FROM read_parquet('department.parquet');");
+			con.Query("CREATE TEMPORARY TABLE room AS SELECT * FROM read_parquet('room.parquet');");
+			con.Query("CREATE TEMPORARY TABLE type AS SELECT * FROM read_parquet('type.parquet');");
+		}
+
+		// Or, leave tables in disk, we create the views
+		{
+			// con.Query("CREATE VIEW student AS SELECT * FROM read_parquet('student.parquet');");
+			// con.Query("CREATE VIEW department AS SELECT * FROM read_parquet('department.parquet');");
+			// con.Query("CREATE VIEW room AS SELECT * FROM read_parquet('room.parquet');");
+			// con.Query("CREATE VIEW type AS SELECT * FROM read_parquet('type.parquet');");
+		}
+
+		// Or, leave tables in S3, we create the views
+		{
+			//		con.Query("SET s3_region='ap-southeast-1';");
+			//		con.Query("SET s3_access_key_id=" + s3_access_key_id + ";");
+			//		con.Query("SET s3_secret_access_key=" + s3_access_key + ";");
+			//
+			//		con.Query("CREATE VIEW student AS SELECT * FROM read_parquet('s3://parquets/student.parquet');");
+			//		con.Query("CREATE VIEW room AS SELECT * FROM read_parquet('s3://parquets/room.parquet');");
+		}
+		duckdb::BeeProfiler::Get().Clear();
 	}
 
-	// Or, leave tables in disk, we create the views
+	// ------------------------------------ DuckDB Settings -------------------------------------------------
 	{
-		// con.Query("CREATE VIEW student AS SELECT * FROM read_parquet('student.parquet');");
-		// con.Query("CREATE VIEW department AS SELECT * FROM read_parquet('department.parquet');");
-		// con.Query("CREATE VIEW room AS SELECT * FROM read_parquet('room.parquet');");
-		// con.Query("CREATE VIEW type AS SELECT * FROM read_parquet('type.parquet');");
+		// set num of thread, we cannot use 128 threads because 2 threads are left for Perf.
+		con.Query("SET threads TO 64;");
+
+		// set the allocator flush threshold
+		auto res = con.Query("SET allocator_flush_threshold=\"300gb\"; ");
+
+		// disable the object cache
+		con.Query("PRAGMA disable_object_cache;");
 	}
 
-	// Or, leave tables in S3, we create the views
+	// ---------------------------- ------- Threads Settings -----------------------------------------------
 	{
-		//		con.Query("SET s3_region='ap-southeast-1';");
-		//		con.Query("SET s3_access_key_id=" + s3_access_key_id + ";");
-		//		con.Query("SET s3_secret_access_key=" + s3_access_key + ";");
-		//
-		//		con.Query("CREATE VIEW student AS SELECT * FROM read_parquet('s3://parquets/student.parquet');");
-		//		con.Query("CREATE VIEW room AS SELECT * FROM read_parquet('s3://parquets/room.parquet');");
+		auto &scheduler = duckdb::ThreadScheduler::Get();
+		using VecStr = std::vector<std::string>;
+
+		// [HashJoin]
+		{
+			// Build Hash Table
+			scheduler.SetThreadSetting(64, VecStr {"SEQ_SCAN ", "READ_PARQUET "}, VecStr {"HASH_JOIN"}, false);
+			scheduler.SetThreadSetting(64, VecStr {"HT_FINALIZE"}, VecStr {"HT_FINALIZE"}, false);
+			// Probe Hash Table
+			scheduler.SetThreadSetting(64, VecStr {"SEQ_SCAN "}, VecStr {"EXPLAIN_ANALYZE"}, true);
+		}
+		// [Sort-Merge Join]
+		{
+			scheduler.SetThreadSetting(32, VecStr {"PIECEWISE_MERGE_JOIN"}, VecStr {""}, false);
+			scheduler.SetThreadSetting(32, VecStr {"PIECEWISE_MERGE_JOIN"}, VecStr {""}, true);
+		}
+		// [BREAKER]
+		{
+			scheduler.SetThreadSetting(64, VecStr {"BREAKER"}, VecStr {""});
+			scheduler.SetThreadSetting(12, VecStr {"SEQ_SCAN ", "READ_PARQUET "}, VecStr {"BREAKER"});
+			scheduler.SetThreadSetting(52, VecStr {"SEQ_SCAN ", "READ_PARQUET "}, VecStr {"HASH_JOIN"}, true);
+		}
+		// [AsOf Join]
+		{
+			scheduler.SetThreadSetting(32, VecStr {"ASOF_JOIN"}, VecStr {""});
+			scheduler.SetThreadSetting(32, VecStr {""}, VecStr {"ASOF_JOIN"});
+			scheduler.SetThreadSetting(32, VecStr {"ASOF_JOIN"}, VecStr {"EXPLAIN_ANALYZE"});
+		}
+		// [IE Join]
+		{
+			scheduler.SetThreadSetting(32, VecStr {"IE_JOIN"}, VecStr {"IE_JOIN", "EXPLAIN_ANALYZE", "BREAKER"});
+			scheduler.SetThreadSetting(4, VecStr {"SEQ_SCAN ", "READ_PARQUET "}, VecStr {"IE_JOIN"});
+			scheduler.SetThreadSetting(28, VecStr {"IE_JOIN"}, VecStr {"HASH_JOIN"});
+		}
 	}
-	duckdb::BeeProfiler::Get().Clear();
 
 	// ------------------------------------------ Query -----------------------------------------------------
 	// Hash Join & Sort-Merge Join
@@ -215,7 +260,7 @@ int main() {
 			    "WHERE student.stu_id = room.stu_id AND student.major_id = department.major_id AND room.type = "
 			    "type.type;";
 
-			ExecuteQuery(con, query, 2, 1);
+			ExecuteQuery(con, query, 1, 0);
 		}
 	}
 

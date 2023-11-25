@@ -51,7 +51,7 @@ using Profiler = BaseProfiler<system_clock>;
 
 class BeeProfiler {
 public:
-	const static bool kEnableProfiling = true;
+	const static bool kEnableProfiling = false;
 
 public:
 	static BeeProfiler &Get() {
@@ -63,7 +63,7 @@ public:
 		InsertStatRecord(name, size_t(value * 1e9));
 	}
 
-	void InsertStatRecord(string name, size_t value) {
+	inline void InsertStatRecord(string name, size_t value) {
 		if (kEnableProfiling) {
 			lock_guard<mutex> lock(mtx);
 			values_[name] += value;
@@ -165,5 +165,53 @@ private:
 	unordered_map<string, size_t> calling_times_;
 	unordered_map<string, HTInfo> ht_records_;
 	mutable std::mutex mtx;
+};
+
+class CatProfiler {
+public:
+	static CatProfiler &Get() {
+		static CatProfiler instance;
+		return instance;
+	}
+
+	void StartStage(const string &stage_name) {
+		lock_guard<mutex> lock(mtx_);
+		if (!cur_stage_.empty() && stage_name == cur_stage_) {
+			// already in this stage
+			return;
+		}
+		cur_stage_ = stage_name;
+		timer_.Start();
+	}
+
+	void EndStage(const string &stage_name) {
+		lock_guard<mutex> lock(mtx_);
+		if (stage_name != cur_stage_) {
+			// not the same stage
+			return;
+		}
+		timer_.End();
+		stage_timings_[stage_name] += timer_.Elapsed();
+		cur_stage_.clear();
+	}
+
+	void PrintResults() const {
+		for (const auto &pair : stage_timings_) {
+			std::cerr << pair.first << ": " << pair.second << " s\t";
+		}
+	}
+
+	void Clear() {
+		stage_timings_.clear();
+		timer_.End();
+		cur_stage_.clear();
+	}
+
+private:
+	// [stage_name] -> total time (ns)
+	unordered_map<string, double> stage_timings_;
+	mutex mtx_;
+	Profiler timer_;
+	string cur_stage_;
 };
 }  // namespace duckdb

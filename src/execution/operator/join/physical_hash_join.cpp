@@ -6,6 +6,7 @@
 #include "duckdb/function/function_binder.hpp"
 #include "duckdb/main/client_context.hpp"
 #include "duckdb/main/query_profiler.hpp"
+#include "duckdb/optimizer/thread_scheduler.hpp"
 #include "duckdb/parallel/base_pipeline_event.hpp"
 #include "duckdb/parallel/pipeline.hpp"
 #include "duckdb/parallel/thread_context.hpp"
@@ -51,7 +52,7 @@ PhysicalHashJoin::PhysicalHashJoin(LogicalOperator &op, unique_ptr<PhysicalOpera
 //===--------------------------------------------------------------------===//
 class HashJoinGlobalSinkState : public GlobalSinkState {
 public:
-	HashJoinGlobalSinkState(const PhysicalHashJoin &op, ClientContext &context_p, string &conditions_str)
+	HashJoinGlobalSinkState(const PhysicalHashJoin &op, ClientContext &context_p)
 	    : context(context_p), finalized(false), scanned_data(false) {
 		hash_table = op.InitializeHashTable(context);
 
@@ -65,10 +66,14 @@ public:
 		probe_types.insert(probe_types.end(), payload_types.begin(), payload_types.end());
 		probe_types.emplace_back(LogicalType::HASH);
 		// yiqiao: get name of this hash join
-		const void *address = static_cast<const void *>(&hash_table);
-		std::stringstream ss;
-		ss << address;
-		ht_name = conditions_str + " - " + ss.str();
+		string conditions_str;
+		for (size_t i = 0; i < op.conditions.size(); ++i) {
+			auto &con = op.conditions[i];
+			conditions_str += con.left->GetName() + "=" + con.right->GetName();
+			if (i != op.conditions.size() - 1) conditions_str += ", ";
+		}
+		string address = to_string(size_t(&hash_table));
+		ht_name = conditions_str + " - " + address;
 	}
 
 	void ScheduleFinalize(Pipeline &pipeline, Event &event);
@@ -181,13 +186,8 @@ unique_ptr<JoinHashTable> PhysicalHashJoin::InitializeHashTable(ClientContext &c
 }
 
 unique_ptr<GlobalSinkState> PhysicalHashJoin::GetGlobalSinkState(ClientContext &context) const {
-	string conditions_str;
-	for (size_t i = 0; i < conditions.size(); ++i) {
-		auto &con = conditions[i];
-		conditions_str += con.left->GetName() + "=" + con.right->GetName();
-		if (i != conditions.size() - 1) conditions_str += ", ";
-	}
-	return make_uniq<HashJoinGlobalSinkState>(*this, context, conditions_str);
+	CatProfiler::Get().StartStage("[HashJoin - Build Hash Table]");
+	return make_uniq<HashJoinGlobalSinkState>(*this, context);
 }
 
 unique_ptr<LocalSinkState> PhysicalHashJoin::GetLocalSinkState(ExecutionContext &context) const {
@@ -224,7 +224,7 @@ SinkResultType PhysicalHashJoin::Sink(ExecutionContext &context, DataChunk &chun
 		ht.Build(lstate.append_state, lstate.join_keys, lstate.build_chunk);
 	}
 
-	string name = "[HashJoin - (1) Partition - " + sink.ht_name + "]";
+	string name = "[HashJoin - (1.1) Partition - " + sink.ht_name + "]";
 	BeeProfiler::Get().InsertStatRecord(name, profiler.Elapsed());
 	return SinkResultType::NEED_MORE_INPUT;
 }
@@ -232,6 +232,10 @@ SinkResultType PhysicalHashJoin::Sink(ExecutionContext &context, DataChunk &chun
 SinkCombineResultType PhysicalHashJoin::Combine(ExecutionContext &context, OperatorSinkCombineInput &input) const {
 	auto &gstate = input.global_state.Cast<HashJoinGlobalSinkState>();
 	auto &lstate = input.local_state.Cast<HashJoinLocalSinkState>();
+
+	Profiler profiler;
+	profiler.Start();
+
 	if (lstate.hash_table) {
 		lstate.hash_table->GetSinkCollection().FlushAppendState(lstate.append_state);
 		lock_guard<mutex> local_ht_lock(gstate.lock);
@@ -240,6 +244,9 @@ SinkCombineResultType PhysicalHashJoin::Combine(ExecutionContext &context, Opera
 	auto &client_profiler = QueryProfiler::Get(context.client);
 	context.thread.profiler.Flush(*this, lstate.build_executor, "build_executor", 1);
 	client_profiler.Flush(context.thread.profiler);
+
+	string name = "[HashJoin - (1.2) Combine Partition - " + gstate.ht_name + "]";
+	BeeProfiler::Get().InsertStatRecord(name, profiler.Elapsed());
 
 	return SinkCombineResultType::FINISHED;
 }
@@ -308,7 +315,7 @@ public:
 		// yiqiao: modify the #thread for hash table building
 		// const idx_t num_threads = TaskScheduler::GetScheduler(context).NumberOfThreads();
 		const idx_t active_threads = TaskScheduler::GetScheduler(context).NumberOfThreads();
-		const idx_t num_threads = 4;
+		const idx_t num_threads = ThreadScheduler::Get().GetThreadSetting("HT_FINALIZE", "HT_FINALIZE", false);
 		auto now = std::chrono::system_clock::now();
 		auto duration = now.time_since_epoch();
 		auto milliseconds = std::chrono::duration_cast<std::chrono::milliseconds>(duration).count() % 1000000;
@@ -417,6 +424,9 @@ SinkFinalizeType PhysicalHashJoin::Finalize(Pipeline &pipeline, Event &event, Cl
 	auto &sink = input.global_state.Cast<HashJoinGlobalSinkState>();
 	auto &ht = *sink.hash_table;
 
+	Profiler profiler;
+	profiler.Start();
+
 	sink.external = ht.RequiresExternalJoin(context.config, sink.local_hash_tables);
 	if (sink.external) {
 		sink.perfect_join_executor.reset();
@@ -456,6 +466,8 @@ SinkFinalizeType PhysicalHashJoin::Finalize(Pipeline &pipeline, Event &event, Cl
 		sink.ScheduleFinalize(pipeline, event);
 	}
 	sink.finalized = true;
+	string name = "[HashJoin - (1.3) Finalize Partition - " + sink.ht_name + "]";
+	BeeProfiler::Get().InsertStatRecord(name, profiler.Elapsed());
 	if (ht.Count() == 0 && EmptyResultIfRHSIsEmpty()) {
 		return SinkFinalizeType::NO_OUTPUT_POSSIBLE;
 	}
@@ -510,6 +522,11 @@ unique_ptr<OperatorState> PhysicalHashJoin::GetOperatorState(ExecutionContext &c
 	auto &ht = sink.hash_table;
 	BeeProfiler::Get().InsertHTRecord("<Hash Join - " + sink.ht_name + ">", ht->SizeInBytes(),
 	                                  ht->PointerTableSize(ht->Count()), sink.hash_table->Count());
+
+	// yiqiao: building ends, then start to probe
+	CatProfiler::Get().EndStage("[HashJoin - Build Hash Table]");
+	CatProfiler::Get().StartStage("[HashJoin - Probe Hash Table]");
+
 	return std::move(state);
 }
 
@@ -694,6 +711,8 @@ public:
 };
 
 unique_ptr<GlobalSourceState> PhysicalHashJoin::GetGlobalSourceState(ClientContext &context) const {
+	// yiqiao: there is no external join in my setting, so probing stage ends.
+	CatProfiler::Get().EndStage("[HashJoin - Probe Hash Table]");
 	return make_uniq<HashJoinGlobalSourceState>(*this, context);
 }
 
