@@ -26,7 +26,7 @@ JoinHashTable::JoinHashTable(BufferManager &buffer_manager_p, const vector<JoinC
       finalized(false),
       has_null(false),
       external(false),
-      radix_bits(0),
+      radix_bits(0),  // yiqiao: radix_bits is 4 by default
       partition_start(0),
       partition_end(0) {
 	for (auto &condition : conditions) {
@@ -158,6 +158,9 @@ void JoinHashTable::Build(PartitionedTupleDataAppendState &append_state, DataChu
 	if (keys.size() == 0) {
 		return;
 	}
+	Profiler profiler;
+	profiler.Start();
+
 	// special case: correlated mark join
 	if (join_type == JoinType::MARK && !correlated_mark_join_info.correlated_types.empty()) {
 		auto &info = correlated_mark_join_info;
