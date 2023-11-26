@@ -113,6 +113,7 @@ public:
 };
 
 unique_ptr<GlobalSinkState> PhysicalPiecewiseMergeJoin::GetGlobalSinkState(ClientContext &context) const {
+	CatProfiler::Get().StartStage("[PWMJ - Sort]");
 	return make_uniq<MergeJoinGlobalState>(context, *this);
 }
 
@@ -280,6 +281,8 @@ public:
 };
 
 unique_ptr<OperatorState> PhysicalPiecewiseMergeJoin::GetOperatorState(ExecutionContext &context) const {
+	CatProfiler::Get().EndStage("[PWMJ - Sort]");
+	CatProfiler::Get().StartStage("[PWMJ - Match]");
 	auto &config = ClientConfig::GetConfig(context.client);
 	return make_uniq<PiecewiseMergeJoinState>(context.client, *this, config.force_external);
 }

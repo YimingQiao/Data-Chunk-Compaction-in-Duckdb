@@ -5,6 +5,7 @@
 #include "duckdb/common/row_operations/row_operations.hpp"
 #include "duckdb/common/types/column/column_data_consumer.hpp"
 #include "duckdb/main/config.hpp"
+#include "duckdb/optimizer/thread_scheduler.hpp"
 #include "duckdb/parallel/event.hpp"
 
 namespace duckdb {
@@ -679,7 +680,7 @@ void PartitionMergeEvent::Schedule() {
 	// idx_t num_threads = ts.NumberOfThreads();
 	// yiqiao: set the partition threads
 	const idx_t active_threads = TaskScheduler::GetScheduler(context).NumberOfThreads();
-	const idx_t num_threads = 16;
+	const idx_t num_threads = ThreadScheduler::Get().GetThreadSetting("PARTITION_MERGE", "PARTITION_MERGE", false);
 	auto now = std::chrono::system_clock::now();
 	auto duration = now.time_since_epoch();
 	auto milliseconds = std::chrono::duration_cast<std::chrono::milliseconds>(duration).count() % 1000000;

@@ -134,7 +134,8 @@ public:
 		// yiqiao: do not use all threads for sorting, 16/32 is enough!
 		// idx_t num_threads = ts.NumberOfThreads();
 		idx_t active_threads = ts.NumberOfThreads();
-		idx_t num_threads = 48;
+		idx_t num_threads = ThreadScheduler::Get().GetThreadSetting("RANGE_JOIN_MERGE", "RANGE_JOIN_MERGE", false);
+		num_threads = num_threads ? num_threads : active_threads;
 		auto now = std::chrono::system_clock::now();
 		auto duration = now.time_since_epoch();
 		auto milliseconds = std::chrono::duration_cast<std::chrono::milliseconds>(duration).count() % 1000000;

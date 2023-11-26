@@ -45,7 +45,22 @@ public:
 	// getter
 	size_t GetThreadSetting(const string &source, const string &sink, bool has_operator) {
 		string key = GenerateKey(source, sink, has_operator);
-		return thread_setting_[key];
+		if (thread_setting_[key] != 0) {
+			return thread_setting_[key];
+		}
+
+		key = GenerateKey("", sink, has_operator);
+		if (thread_setting_[key] != 0) {
+			return thread_setting_[key];
+		}
+
+		key = GenerateKey(source, "", has_operator);
+		if (thread_setting_[key] != 0) {
+			return thread_setting_[key];
+		}
+
+		// not found!
+		return 0;
 	}
 
 	void PrintThreadSetting() {

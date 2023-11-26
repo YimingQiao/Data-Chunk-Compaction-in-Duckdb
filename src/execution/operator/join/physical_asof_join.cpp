@@ -78,15 +78,20 @@ PhysicalAsOfJoin::PhysicalAsOfJoin(LogicalComparisonJoin &op, unique_ptr<Physica
 //===--------------------------------------------------------------------===//
 class AsOfGlobalSinkState : public GlobalSinkState {
 public:
-	AsOfGlobalSinkState(ClientContext &context, const PhysicalAsOfJoin &op, string &conditions_str)
+	AsOfGlobalSinkState(ClientContext &context, const PhysicalAsOfJoin &op)
 	    : rhs_sink(context, op.rhs_partitions, op.rhs_orders, op.children[1]->types, {}, op.estimated_cardinality),
 	      is_outer(IsRightOuterJoin(op.join_type)),
 	      has_null(false) {
 		// yiqiao: get name of this hash join
-		const void *address = static_cast<const void *>(&op);
-		std::stringstream ss;
-		ss << address;
-		asof_name = conditions_str + " - " + ss.str();
+		string conditions_str;
+		for (size_t i = 0; i < op.conditions.size(); ++i) {
+			auto &con = op.conditions[i];
+			conditions_str +=
+			    con.left->GetName() + " " + ExpressionTypeToString(con.comparison) + " " + con.right->GetName();
+			if (i != op.conditions.size() - 1) conditions_str += ", ";
+		}
+		string address = to_string(size_t(&op));
+		asof_name = conditions_str + " - " + address;
 	}
 
 	idx_t Count() const {
@@ -134,14 +139,8 @@ public:
 };
 
 unique_ptr<GlobalSinkState> PhysicalAsOfJoin::GetGlobalSinkState(ClientContext &context) const {
-	string conditions_str;
-	for (size_t i = 0; i < conditions.size(); ++i) {
-		auto &con = conditions[i];
-		conditions_str +=
-		    con.left->GetName() + " " + ExpressionTypeToString(con.comparison) + " " + con.right->GetName();
-		if (i != conditions.size() - 1) conditions_str += ", ";
-	}
-	return make_uniq<AsOfGlobalSinkState>(context, *this, conditions_str);
+	CatProfiler::Get().StartStage("[ASOF_JOIN - Sink]");
+	return make_uniq<AsOfGlobalSinkState>(context, *this);
 }
 
 unique_ptr<LocalSinkState> PhysicalAsOfJoin::GetLocalSinkState(ExecutionContext &context) const {
@@ -213,6 +212,8 @@ public:
 };
 
 unique_ptr<GlobalOperatorState> PhysicalAsOfJoin::GetGlobalOperatorState(ClientContext &context) const {
+	CatProfiler::Get().EndStage("[ASOF_JOIN - Sink]");
+	CatProfiler::Get().StartStage("[ASOF_JOIN - Execute]");
 	auto &gsink = sink_state->Cast<AsOfGlobalSinkState>();
 	return make_uniq<AsOfGlobalState>(gsink);
 }
@@ -711,6 +712,9 @@ public:
 };
 
 unique_ptr<GlobalSourceState> PhysicalAsOfJoin::GetGlobalSourceState(ClientContext &context) const {
+	CatProfiler::Get().EndStage("[ASOF_JOIN - Execute]");
+	CatProfiler::Get().StartStage("[ASOF_JOIN - GetData]");
+
 	auto &gsink = sink_state->Cast<AsOfGlobalSinkState>();
 	return make_uniq<AsOfGlobalSourceState>(gsink);
 }

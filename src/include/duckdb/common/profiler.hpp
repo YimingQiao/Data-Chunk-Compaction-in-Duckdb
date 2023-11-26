@@ -196,6 +196,9 @@ public:
 	}
 
 	unordered_map<string, double> &GetStageTimings() {
+		if (!cur_stage_.empty()) {
+			EndStage(cur_stage_);
+		}
 		return stage_timings_;
 	}
 

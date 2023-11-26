@@ -82,7 +82,7 @@ public:
 	using GlobalSortedTable = PhysicalRangeJoin::GlobalSortedTable;
 
 public:
-	IEJoinGlobalState(ClientContext &context, const PhysicalIEJoin &op, string &conditions_str) : child(1) {
+	IEJoinGlobalState(ClientContext &context, const PhysicalIEJoin &op) : child(1) {
 		tables.resize(2);
 		RowLayout lhs_layout;
 		lhs_layout.Initialize(op.children[0]->types);
@@ -97,10 +97,14 @@ public:
 		tables[1] = make_uniq<GlobalSortedTable>(context, rhs_order, rhs_layout);
 
 		// yiqiao: get name of this hash join
-		const void *address = static_cast<const void *>(&tables);
-		std::stringstream ss;
-		ss << address;
-		ie_join_name = conditions_str + " - " + ss.str();
+		string conditions_str;
+		for (size_t i = 0; i < op.conditions.size(); ++i) {
+			auto &con = op.conditions[i];
+			conditions_str += con.left->GetName() + "=" + con.right->GetName();
+			if (i != op.conditions.size() - 1) conditions_str += ", ";
+		}
+		string address = to_string(size_t(&tables));
+		ie_join_name = conditions_str + " - " + address;
 	}
 
 	IEJoinGlobalState(IEJoinGlobalState &prev)
@@ -132,13 +136,8 @@ public:
 
 unique_ptr<GlobalSinkState> PhysicalIEJoin::GetGlobalSinkState(ClientContext &context) const {
 	D_ASSERT(!sink_state);
-	string conditions_str;
-	for (size_t i = 0; i < conditions.size(); ++i) {
-		auto &con = conditions[i];
-		conditions_str += con.left->GetName() + "=" + con.right->GetName();
-		if (i != conditions.size() - 1) conditions_str += ", ";
-	}
-	return make_uniq<IEJoinGlobalState>(context, *this, conditions_str);
+	CatProfiler::Get().StartStage("[IEJOIN - Sort]");
+	return make_uniq<IEJoinGlobalState>(context, *this);
 }
 
 unique_ptr<LocalSinkState> PhysicalIEJoin::GetLocalSinkState(ExecutionContext &context) const {
@@ -977,6 +976,8 @@ public:
 };
 
 unique_ptr<GlobalSourceState> PhysicalIEJoin::GetGlobalSourceState(ClientContext &context) const {
+	CatProfiler::Get().EndStage("[IEJOIN - Sort]");
+	CatProfiler::Get().StartStage("[IEJOIN - Merge]");
 	return make_uniq<IEJoinGlobalSourceState>(*this);
 }
 
