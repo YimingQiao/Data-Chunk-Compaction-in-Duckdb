@@ -149,11 +149,11 @@ bool Pipeline::ScheduleParallel(shared_ptr<Event> &event) {
 			idx_t pos = details.find('\n');
 			source_name += "(" + details.substr(0, pos) + ")";
 		}
-		if (source_name == "IE_JOIN" && max_threads > source_state->MaxThreads()) {
-			std::cerr << " [Warning] Do not use more threads than the number of chunks in "
-			             "IE_JOIN, having " +
-			                 std::to_string(max_threads) + " threads, but only " +
-			                 std::to_string(source_state->MaxThreads()) + " chunks\n";
+		if (source_name == "IE_JOIN" || source_name == "ASOF_JOIN") {
+			std::cerr << " [Open] " + source_name + " --> " + sink->GetName() +
+			                 "\t #task/#thread: " + std::to_string(max_threads) + "/" + std::to_string(active_threads) +
+			                 "\tTick: " + std::to_string(milliseconds) + "ms, having " + std::to_string(max_threads) +
+			                 " threads, " + std::to_string(source_state->MaxThreads()) + " pairs\n";
 		} else {
 			std::cerr << " [Open] " + source_name + " --> " + sink->GetName() +
 			                 "\t #task/#thread: " + std::to_string(max_threads) + "/" + std::to_string(active_threads) +

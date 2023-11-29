@@ -26,7 +26,7 @@ JoinHashTable::JoinHashTable(BufferManager &buffer_manager_p, const vector<JoinC
       finalized(false),
       has_null(false),
       external(false),
-      radix_bits(0),  // yiqiao: radix_bits is 4 by default
+      radix_bits(4),
       partition_start(0),
       partition_end(0) {
 	for (auto &condition : conditions) {

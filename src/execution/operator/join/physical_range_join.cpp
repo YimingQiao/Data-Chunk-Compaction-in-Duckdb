@@ -132,7 +132,6 @@ public:
 		// Schedule tasks equal to the number of threads, which will each merge multiple partitions
 		auto &ts = TaskScheduler::GetScheduler(context);
 		// yiqiao: do not use all threads for sorting, 16/32 is enough!
-		// idx_t num_threads = ts.NumberOfThreads();
 		idx_t active_threads = ts.NumberOfThreads();
 		idx_t num_threads = ThreadScheduler::Get().GetThreadSetting("RANGE_JOIN_MERGE", "RANGE_JOIN_MERGE", false);
 		num_threads = num_threads ? num_threads : active_threads;
