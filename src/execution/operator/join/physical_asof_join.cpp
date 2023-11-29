@@ -139,7 +139,7 @@ public:
 };
 
 unique_ptr<GlobalSinkState> PhysicalAsOfJoin::GetGlobalSinkState(ClientContext &context) const {
-	CatProfiler::Get().StartStage("[ASOF_JOIN - Sink]");
+	CatProfiler::Get().StartStage("[ASOF_JOIN - P & S]");
 	return make_uniq<AsOfGlobalSinkState>(context, *this);
 }
 
@@ -212,8 +212,6 @@ public:
 };
 
 unique_ptr<GlobalOperatorState> PhysicalAsOfJoin::GetGlobalOperatorState(ClientContext &context) const {
-	CatProfiler::Get().EndStage("[ASOF_JOIN - Sink]");
-	CatProfiler::Get().StartStage("[ASOF_JOIN - Execute]");
 	auto &gsink = sink_state->Cast<AsOfGlobalSinkState>();
 	return make_uniq<AsOfGlobalState>(gsink);
 }
@@ -712,9 +710,6 @@ public:
 };
 
 unique_ptr<GlobalSourceState> PhysicalAsOfJoin::GetGlobalSourceState(ClientContext &context) const {
-	CatProfiler::Get().EndStage("[ASOF_JOIN - Execute]");
-	CatProfiler::Get().StartStage("[ASOF_JOIN - GetData]");
-
 	auto &gsink = sink_state->Cast<AsOfGlobalSinkState>();
 	return make_uniq<AsOfGlobalSourceState>(gsink);
 }
@@ -753,6 +748,8 @@ AsOfLocalSourceState::AsOfLocalSourceState(AsOfGlobalSourceState &gsource, const
 }
 
 bool AsOfLocalSourceState::CombineLeftPartitions() {
+	Profiler profiler;
+	profiler.Start();
 	const auto buffer_count = gsource.gsink.lhs_buffers.size();
 	while (gsource.combined < buffer_count && !client.interrupted) {
 		const auto next_combine = gsource.next_combine++;
@@ -760,21 +757,27 @@ bool AsOfLocalSourceState::CombineLeftPartitions() {
 			gsource.gsink.lhs_buffers[next_combine]->Combine();
 			++gsource.combined;
 		} else {
-			TaskScheduler::GetScheduler(client).YieldThread();
+			// TaskScheduler::GetScheduler(client).YieldThread();
 		}
 	}
-
+	BeeProfiler::Get().InsertStatRecord(
+	    "[AsOfJoin - GetData - CombineLeftPartitions - " + gsource.gsink.asof_name + "] ", profiler.Elapsed());
 	return !client.interrupted;
 }
 
 bool AsOfLocalSourceState::MergeLeftPartitions() {
+	Profiler profiler;
+	profiler.Start();
+
 	PartitionGlobalMergeStates::Callback local_callback;
 	PartitionLocalMergeState local_merge(*gsource.gsink.lhs_sink);
 	gsource.GetMergeStates().ExecuteTask(local_merge, local_callback);
 	gsource.merged++;
 	while (gsource.merged < gsource.mergers && !client.interrupted) {
-		TaskScheduler::GetScheduler(client).YieldThread();
+		// TaskScheduler::GetScheduler(client).YieldThread();
 	}
+	BeeProfiler::Get().InsertStatRecord("[AsOfJoin - GetData - MergeLeftPartitions - " + gsource.gsink.asof_name + "] ",
+	                                    profiler.Elapsed());
 	return !client.interrupted;
 }
 
@@ -804,26 +807,25 @@ SourceResultType PhysicalAsOfJoin::GetData(ExecutionContext &context, DataChunk 
 	auto &rhs_sink = gsource.gsink.rhs_sink;
 	auto &client = context.client;
 
-	Profiler profiler;
-	profiler.Start();
+	// CatProfiler::Get().EndStage("[ASOF_JOIN - P & S]");
+	// CatProfiler::Get().StartStage("[ASOF_JOIN - Combine & Merge Left]");
 
 	//	Step 1: Combine the partitions
 	if (!lsource.CombineLeftPartitions()) {
-		BeeProfiler::Get().InsertStatRecord(
-		    "[AsOfJoin - GetData - " + gsource.gsink.asof_name + "] Combine the partitions", profiler.Elapsed());
-		BeeProfiler::Get().InsertStatRecord(
-		    "[AsOfJoin - GetData - " + gsource.gsink.asof_name + "] Combine the partitions #Tuples", chunk.size());
 		return SourceResultType::FINISHED;
 	}
 
 	//	Step 2: Sort on all threads
 	if (!lsource.MergeLeftPartitions()) {
-		BeeProfiler::Get().InsertStatRecord(
-		    "[AsOfJoin - GetData - " + gsource.gsink.asof_name + "] Sort on all threads", profiler.Elapsed());
-		BeeProfiler::Get().InsertStatRecord(
-		    "[AsOfJoin - GetData - " + gsource.gsink.asof_name + "] Sort on all threads #Tuples", chunk.size());
 		return SourceResultType::FINISHED;
 	}
+
+	Profiler profiler;
+	profiler.Start();
+
+	CatProfiler::Get().EndStage("[ASOF_JOIN - P & S]");
+	// CatProfiler::Get().EndStage("[ASOF_JOIN - Combine & Merge Left]");
+	CatProfiler::Get().StartStage("[ASOF_JOIN - Join]");
 
 	//	Step 3: Join the partitions
 	auto &lhs_sink = *gsource.gsink.lhs_sink;
@@ -836,6 +838,9 @@ SourceResultType PhysicalAsOfJoin::GetData(ExecutionContext &context, DataChunk 
 				//	More to flush
 				lsource.probe_buffer.BeginLeftScan(left_bin);
 			} else if (!IsRightOuterJoin(join_type) || client.interrupted) {
+				BeeProfiler::Get().InsertStatRecord(
+				    "[AsOfJoin - GetData - " + gsource.gsink.asof_name + "] Join the partitions but nothing left",
+				    profiler.Elapsed());
 				return SourceResultType::FINISHED;
 			} else {
 				//	Wait for all threads to finish
@@ -861,6 +866,8 @@ SourceResultType PhysicalAsOfJoin::GetData(ExecutionContext &context, DataChunk 
 			gsource.flushed++;
 		}
 	}
+
+	CatProfiler::Get().EndStage("[ASOF_JOIN - Join]");
 
 	//	Step 4: Emit right join matches
 	if (!IsRightOuterJoin(join_type)) {

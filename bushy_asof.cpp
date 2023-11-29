@@ -35,11 +35,11 @@ int main() {
 	}
 
 	// ------------------------------------ Create Tables -------------------------------------------------
-	const size_t scale = 2e7;
-	const size_t n_kind = 16;
+	const size_t scale = 5e6;
+	const size_t n_kind = 256;
 	if (FileExisted("./build_ts.parquet") && FileExisted("./probe_ts.parquet")) {
-		con.Query("CREATE TEMPORARY TABLE build AS SELECT * FROM read_parquet('build.parquet');");
-		con.Query("CREATE TEMPORARY TABLE probe AS SELECT * FROM read_parquet('probe.parquet');");
+		con.Query("CREATE TEMPORARY TABLE build AS SELECT * FROM read_parquet('build_ts.parquet');");
+		con.Query("CREATE TEMPORARY TABLE probe AS SELECT * FROM read_parquet('probe_ts.parquet');");
 	} else {
 		con.Query(
 		    "CREATE OR REPLACE TABLE build AS (\n"
@@ -69,22 +69,22 @@ int main() {
 	std::vector<std::vector<double>> the_stats;
 	std::string query = "EXPLAIN ANALYZE SELECT v FROM probe ASOF JOIN build USING(k, t);";
 	// warm up the cache and memory allocator.
-	ExecuteQuery(con, query, 0, 0);
+	ExecuteQuery(con, query, 2, 0);
 	duckdb::CatProfiler::Get().Clear();
 
-	for (size_t i = 64; i > 0; i -= 4) {
-		for (size_t j = 64; j > 0; j -= 4) {
-			if (i != 64 && j != 64 && i != j) continue;
+	for (int64_t i = 64; i > 0; i -= 4) {
+		for (int64_t j = 64; j > 0; j -= 4) {
 			double n_building = i;
 			double n_combine = i;
 			double n_probing = j;
 
 			// asof join
+			scheduler.SetThreadSetting(n_building, VecStr {"SEQ_SCAN ", "READ_PARQUET"}, VecStr {"EXPLAIN_ANALYZE"});
 			scheduler.SetThreadSetting(n_building, VecStr {""}, VecStr {"ASOF_JOIN"});
 			scheduler.SetThreadSetting(n_building, VecStr {"PARTITION_MERGE"}, VecStr {"PARTITION_MERGE"}, false);
 			scheduler.SetThreadSetting(n_probing, VecStr {"ASOF_JOIN"}, VecStr {"EXPLAIN_ANALYZE"});
 
-			ExecuteQuery(con, query, 1, 1);
+			ExecuteQuery(con, query, 1, 0);
 
 			std::vector<double> record {n_building, n_combine, n_probing};
 			auto &timing = duckdb::CatProfiler::Get().GetStageTimings();

@@ -466,8 +466,6 @@ SinkFinalizeType PhysicalHashJoin::Finalize(Pipeline &pipeline, Event &event, Cl
 		sink.ScheduleFinalize(pipeline, event);
 	}
 	sink.finalized = true;
-	CatProfiler::Get().EndStage("[HashJoin - Build Hash Table]");
-	CatProfiler::Get().StartStage("[HashJoin - Combine Hash Table]");
 
 	string name = "[HashJoin - (1.3) Finalize Partition - " + sink.ht_name + "]";
 	BeeProfiler::Get().InsertStatRecord(name, profiler.Elapsed());
@@ -527,7 +525,7 @@ unique_ptr<OperatorState> PhysicalHashJoin::GetOperatorState(ExecutionContext &c
 	                                  ht->PointerTableSize(ht->Count()), sink.hash_table->Count());
 
 	// yiqiao: building ends, then start to probe
-	CatProfiler::Get().EndStage("[HashJoin - Combine Hash Table]");
+	CatProfiler::Get().EndStage("[HashJoin - Build Hash Table]");
 	CatProfiler::Get().StartStage("[HashJoin - Probe Hash Table]");
 
 	return std::move(state);

@@ -13,6 +13,9 @@ void GenDatabase(duckdb::Connection &con);
 
 void ExecuteQuery(duckdb::Connection &con, std::string query, size_t running_times, size_t showing_times);
 
+std::string s3_access_key_id = "qwdasdas";
+std::string s3_access_key = "'qweqasd'";
+
 int main() {
 	// nullptr means in-memory database.
 	std::string db_name = "";
@@ -28,15 +31,28 @@ int main() {
 		// loading table into memory, using the temp table (so that we are sure the data is in memory, even if DuckDB is
 		// not in in-memory mode.)
 		{
-			con.Query("CREATE TEMPORARY TABLE student AS SELECT * FROM read_parquet('probe.parquet');");
-			con.Query("CREATE TEMPORARY TABLE department AS SELECT * FROM read_parquet('build.parquet');");
+			//			con.Query("CREATE TEMPORARY TABLE student AS SELECT * FROM read_parquet('student.parquet');");
+			//			con.Query("CREATE TEMPORARY TABLE department AS SELECT * FROM
+			// read_parquet('department.parquet');");
 		}
 
 		// Or, leave tables in disk, we create the views
 		{
-			// con.Query("CREATE VIEW student AS SELECT * FROM read_parquet('student.parquet');");
-			// con.Query("CREATE VIEW department AS SELECT * FROM read_parquet('department.parquet');");
+			//			con.Query("SET s3_region='ap-southeast-1';");
+			//			con.Query("SET s3_access_key_id=" + s3_access_key_id + ";");
+			//			con.Query("SET s3_secret_access_key=" + s3_access_key + ";");
+			//			con.Query("CREATE VIEW student AS SELECT * FROM read_parquet('probe.parquet');");
+			//			con.Query("CREATE VIEW department AS SELECT * FROM read_parquet('build.parquet');");
 		}
+
+		{
+			con.Query("SET s3_region='ap-southeast-1';");
+			con.Query("SET s3_access_key_id=" + s3_access_key_id + ";");
+			con.Query("SET s3_secret_access_key=" + s3_access_key + ";");
+			con.Query("CREATE VIEW student AS SELECT * FROM read_parquet('s3://parquets/student.parquet');");
+			con.Query("CREATE VIEW department AS SELECT * FROM read_parquet('s3://parquets/department.parquet');");
+		}
+
 		duckdb::BeeProfiler::Get().Clear();
 	}
 
@@ -52,7 +68,7 @@ int main() {
 		con.Query("PRAGMA disable_object_cache;");
 	}
 
-	// ---------------------------- ------- Threads Settings -----------------------------------------------
+	// ------------------------------------ Threads Settings -----------------------------------------------
 	{
 		// [HashJoin]
 		{
@@ -90,22 +106,20 @@ int main() {
 
 	// ------------------------------------------ Query -----------------------------------------------------
 	std::vector<std::vector<double>> the_stats;
-	con.Query("SET prefer_range_joins=true;");
+	// con.Query("SET prefer_range_joins=true;");
 
 	std::string query =
 	    "EXPLAIN ANALYZE "
 	    "SELECT student.stu_id, department.major_id, department.name "
 	    "FROM student, department "
-	    "WHERE student.major_id >= department.major_id AND student.major_id <= department.major_id AND "
-	    "department.major_id <= 10000000;";
+	    "WHERE student.major_id = department.major_id;";
 
 	// the first time is to warm up the cache and memory allocator.
 	ExecuteQuery(con, query, 2, 0);
 	duckdb::CatProfiler::Get().Clear();
 
-	for (size_t i = 64; i > 0; i -= 4) {
-		for (size_t j = 64; j > 0; j -= 4) {
-			if (i != 64 && j != 64 && i != j) continue;
+	for (int64_t i = 64; i > 0; i -= 4) {
+		for (int64_t j = 64; j > 0; j -= 4) {
 			double n_building = i;
 			double n_combine = i;
 			double n_probing = j;
@@ -113,7 +127,8 @@ int main() {
 			// Hash Join
 			scheduler.SetThreadSetting(n_building, VecStr {"SEQ_SCAN ", "READ_PARQUET "}, VecStr {"HASH_JOIN"}, false);
 			scheduler.SetThreadSetting(n_building, VecStr {"HT_FINALIZE"}, VecStr {"HT_FINALIZE"}, false);
-			scheduler.SetThreadSetting(n_probing, VecStr {"SEQ_SCAN "}, VecStr {"EXPLAIN_ANALYZE"}, true);
+			scheduler.SetThreadSetting(n_probing, VecStr {"SEQ_SCAN ", "READ_PARQUET "}, VecStr {"EXPLAIN_ANALYZE"},
+			                           true);
 
 			// Sort-Merge Join
 			scheduler.SetThreadSetting(n_building, VecStr {""}, VecStr {"PIECEWISE_MERGE_JOIN"});
@@ -124,11 +139,6 @@ int main() {
 			scheduler.SetThreadSetting(n_building, VecStr {"RANGE_JOIN_MERGE"}, VecStr {"RANGE_JOIN_MERGE"}, false);
 			scheduler.SetThreadSetting(n_building, VecStr {"SEQ_SCAN ", "READ_PARQUET "}, VecStr {"IE_JOIN"});
 			scheduler.SetThreadSetting(n_probing, VecStr {"IE_JOIN"}, VecStr {"IE_JOIN", "EXPLAIN_ANALYZE", "BREAKER"});
-
-			// asof join
-			scheduler.SetThreadSetting(n_building, VecStr {""}, VecStr {"ASOF_JOIN"});
-			scheduler.SetThreadSetting(n_building, VecStr {"PARTITION_MERGE"}, VecStr {"PARTITION_MERGE"}, false);
-			scheduler.SetThreadSetting(n_probing, VecStr {"ASOF_JOIN"}, VecStr {"EXPLAIN_ANALYZE"});
 
 			ExecuteQuery(con, query, 1, 0);
 
@@ -143,7 +153,7 @@ int main() {
 			duckdb::CatProfiler::Get().Clear();
 		}
 	}
-	Log2File(the_stats, "iejoin_scalability.log");
+	Log2File(the_stats, "hash_join_s3_scalability.log");
 
 	return 0;
 }
@@ -164,8 +174,8 @@ void Log2File(std::vector<std::vector<double>> &the_stats, const std::string &lo
 
 void GenDatabase(duckdb::Connection &con) {
 	// database setting
-	const size_t probing_size = 3e9;
-	const size_t building_size = 5e8;
+	const size_t probing_size = 1e9;
+	const size_t building_size = 2e8;
 
 	// sequential queries
 	{

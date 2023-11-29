@@ -4,8 +4,6 @@
 #include "duckdb.hpp"
 #include "duckdb/optimizer/thread_scheduler.hpp"
 
-std::string s3_access_key_id = "AKIARZ5TMPGJHQ4PFLDP";
-std::string s3_access_key = "+uSXS1yGwBP+wfoaqJrQ71/Mu7WPZbUNABDy2c0h";
 
 //	"CREATE TABLE student (stu_id INTEGER, major_id INTEGER, age TINYINT);",
 //  "CREATE TABLE department(major_id INTEGER, name VARCHAR);"
@@ -13,8 +11,8 @@ std::string s3_access_key = "+uSXS1yGwBP+wfoaqJrQ71/Mu7WPZbUNABDy2c0h";
 //  "CREATE TABLE type (type INTEGER, info VARCHAR);"
 void GenDatabase(duckdb::Connection &con) {
 	// database setting
-	const int probing_size = 2e8;
-	const int building_size = 1e8;
+	const int probing_size = 5e8;
+	const int building_size = 5e7;
 
 	// random queries
 	{
@@ -113,14 +111,14 @@ void GenDatabase(duckdb::Connection &con) {
 	}
 	// export to S3, in parquet format
 	{
-		con.Query("SET s3_region='ap-southeast-1';");
-		con.Query("SET s3_access_key_id=" + s3_access_key_id + ";");
-		con.Query("SET s3_secret_access_key=" + s3_access_key + ";");
-
-		con.Query("COPY student TO 's3://parquets/student.parquet';");
-		con.Query("COPY department TO 's3://parquets/department.parquet';");
-		con.Query("COPY room TO 's3://parquets/room.parquet';");
-		con.Query("COPY type TO 's3://parquets/type.parquet';");
+		//		con.Query("SET s3_region='ap-southeast-1';");
+		//		con.Query("SET s3_access_key_id=" + s3_access_key_id + ";");
+		//		con.Query("SET s3_secret_access_key=" + s3_access_key + ";");
+		//
+		//		con.Query("COPY student TO 's3://parquets/student.parquet';");
+		//		con.Query("COPY department TO 's3://parquets/department.parquet';");
+		//		con.Query("COPY room TO 's3://parquets/room.parquet';");
+		//		con.Query("COPY type TO 's3://parquets/type.parquet';");
 	}
 }
 
@@ -164,28 +162,32 @@ int main() {
 		// loading table into memory, using the temp table (so that we are sure the data is in memory, even if DuckDB is
 		// not in in-memory mode.)
 		{
-			con.Query("CREATE TEMPORARY TABLE student AS SELECT * FROM read_parquet('student.parquet');");
-			con.Query("CREATE TEMPORARY TABLE department AS SELECT * FROM read_parquet('department.parquet');");
-			con.Query("CREATE TEMPORARY TABLE room AS SELECT * FROM read_parquet('room.parquet');");
-			con.Query("CREATE TEMPORARY TABLE type AS SELECT * FROM read_parquet('type.parquet');");
+			//			con.Query("CREATE TEMPORARY TABLE student AS SELECT * FROM read_parquet('student.parquet');");
+			//			con.Query("CREATE TEMPORARY TABLE department AS SELECT * FROM
+			//read_parquet('department.parquet');"); 			con.Query("CREATE TEMPORARY TABLE room AS SELECT * FROM
+			//read_parquet('room.parquet');"); 			con.Query("CREATE TEMPORARY TABLE type AS SELECT * FROM
+			//read_parquet('type.parquet');");
 		}
 
 		// Or, leave tables in disk, we create the views
 		{
-			// con.Query("CREATE VIEW student AS SELECT * FROM read_parquet('student.parquet');");
-			// con.Query("CREATE VIEW department AS SELECT * FROM read_parquet('department.parquet');");
-			// con.Query("CREATE VIEW room AS SELECT * FROM read_parquet('room.parquet');");
-			// con.Query("CREATE VIEW type AS SELECT * FROM read_parquet('type.parquet');");
+			con.Query("CREATE VIEW student AS SELECT * FROM read_parquet('student.parquet');");
+			con.Query("CREATE VIEW department AS SELECT * FROM read_parquet('department.parquet');");
+			con.Query("CREATE VIEW room AS SELECT * FROM read_parquet('room.parquet');");
+			con.Query("CREATE VIEW type AS SELECT * FROM read_parquet('type.parquet');");
 		}
 
 		// Or, leave tables in S3, we create the views
 		{
-			//		con.Query("SET s3_region='ap-southeast-1';");
-			//		con.Query("SET s3_access_key_id=" + s3_access_key_id + ";");
-			//		con.Query("SET s3_secret_access_key=" + s3_access_key + ";");
+			//			con.Query("SET s3_region='ap-southeast-1';");
+			//			con.Query("SET s3_access_key_id=" + s3_access_key_id + ";");
+			//			con.Query("SET s3_secret_access_key=" + s3_access_key + ";");
 			//
-			//		con.Query("CREATE VIEW student AS SELECT * FROM read_parquet('s3://parquets/student.parquet');");
-			//		con.Query("CREATE VIEW room AS SELECT * FROM read_parquet('s3://parquets/room.parquet');");
+			//			con.Query("CREATE VIEW student AS SELECT * FROM
+			//read_parquet('s3://parquets/a_student.parquet');"); 			con.Query("CREATE VIEW room AS SELECT * FROM
+			//read_parquet('s3://parquets/b_room.parquet');"); 			con.Query("CREATE VIEW department AS SELECT * FROM
+			//read_parquet('s3://parquets/department.parquet');"); 			con.Query("CREATE VIEW type AS SELECT * FROM
+			//read_parquet('s3://parquets/type.parquet');");
 		}
 		duckdb::BeeProfiler::Get().Clear();
 	}
@@ -207,21 +209,23 @@ int main() {
 		// [HashJoin]
 		{
 			// Build Hash Table
-			scheduler.SetThreadSetting(64, VecStr {"SEQ_SCAN ", "READ_PARQUET "}, VecStr {"HASH_JOIN"}, false);
-			scheduler.SetThreadSetting(64, VecStr {"HT_FINALIZE"}, VecStr {"HT_FINALIZE"}, false);
+			scheduler.SetThreadSetting(32, VecStr {"SEQ_SCAN ", "READ_PARQUET "}, VecStr {"HASH_JOIN"}, false);
+			scheduler.SetThreadSetting(32, VecStr {"HT_FINALIZE"}, VecStr {"HT_FINALIZE"}, false);
 			// Probe Hash Table
-			scheduler.SetThreadSetting(64, VecStr {"SEQ_SCAN "}, VecStr {"EXPLAIN_ANALYZE"}, true);
+			scheduler.SetThreadSetting(64, VecStr {"SEQ_SCAN ", "READ_PARQUET "}, VecStr {"EXPLAIN_ANALYZE"}, true);
 		}
 		// [Sort-Merge Join]
 		{
 			scheduler.SetThreadSetting(32, VecStr {"PIECEWISE_MERGE_JOIN"}, VecStr {""}, false);
-			scheduler.SetThreadSetting(32, VecStr {"PIECEWISE_MERGE_JOIN"}, VecStr {""}, true);
+			scheduler.SetThreadSetting(32, VecStr {""}, VecStr {"PIECEWISE_MERGE_JOIN"}, true);
+			scheduler.SetThreadSetting(32, VecStr {""}, VecStr {"PIECEWISE_MERGE_JOIN"}, false);
+			scheduler.SetThreadSetting(32, VecStr {"RANGE_JOIN_MERGE"}, VecStr {"RANGE_JOIN_MERGE"}, false);
 		}
 		// [BREAKER]
 		{
 			scheduler.SetThreadSetting(64, VecStr {"BREAKER"}, VecStr {""});
-			scheduler.SetThreadSetting(12, VecStr {"SEQ_SCAN ", "READ_PARQUET "}, VecStr {"BREAKER"});
-			scheduler.SetThreadSetting(52, VecStr {"SEQ_SCAN ", "READ_PARQUET "}, VecStr {"HASH_JOIN"}, true);
+			scheduler.SetThreadSetting(32, VecStr {"SEQ_SCAN ", "READ_PARQUET "}, VecStr {"BREAKER"});
+			scheduler.SetThreadSetting(32, VecStr {"SEQ_SCAN ", "READ_PARQUET "}, VecStr {"HASH_JOIN"}, true);
 		}
 		// [AsOf Join]
 		{
@@ -252,7 +256,7 @@ int main() {
 			    "(SELECT room.stu_id, room.room_id, type.type FROM room, type WHERE room.type = type.type) "
 			    "	AS t2, WHERE t1.stu_id = t2.stu_id;";
 
-			// ExecuteQuery(con, bushy_query, 2, 1);
+			ExecuteQuery(con, bushy_query, 1, 1);
 		}
 
 		// SEQ join query
@@ -264,7 +268,7 @@ int main() {
 			    "WHERE student.stu_id = room.stu_id AND student.major_id = department.major_id AND room.type = "
 			    "type.type;";
 
-			ExecuteQuery(con, query, 2, 1);
+			// ExecuteQuery(con, query, 1, 1);
 		}
 	}
 
