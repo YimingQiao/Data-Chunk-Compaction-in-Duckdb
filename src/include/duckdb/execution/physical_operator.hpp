@@ -11,13 +11,14 @@
 #include "duckdb/catalog/catalog.hpp"
 #include "duckdb/common/common.hpp"
 #include "duckdb/common/enums/operator_result_type.hpp"
+#include "duckdb/common/enums/order_preservation_type.hpp"
 #include "duckdb/common/enums/physical_operator_type.hpp"
+#include "duckdb/common/optional_idx.hpp"
+#include "duckdb/common/types/column/column_data_collection.hpp"
 #include "duckdb/common/types/data_chunk.hpp"
 #include "duckdb/execution/execution_context.hpp"
-#include "duckdb/optimizer/join_order/join_node.hpp"
-#include "duckdb/common/optional_idx.hpp"
 #include "duckdb/execution/physical_operator_states.hpp"
-#include "duckdb/common/enums/order_preservation_type.hpp"
+#include "duckdb/optimizer/join_order/join_node.hpp"
 
 namespace duckdb {
 class Event;
@@ -219,7 +220,7 @@ public:
 //! inherit their state class from the CachingOperatorState.
 class CachingPhysicalOperator : public PhysicalOperator {
 public:
-	static constexpr const idx_t CACHE_THRESHOLD = 64;
+	static constexpr const idx_t CACHE_THRESHOLD = 1024;
 	CachingPhysicalOperator(PhysicalOperatorType type, vector<LogicalType> types, idx_t estimated_cardinality);
 
 	bool caching_supported;

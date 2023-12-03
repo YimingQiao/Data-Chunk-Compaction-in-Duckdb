@@ -72,7 +72,7 @@ public:
 			conditions_str += con.left->GetName() + "=" + con.right->GetName();
 			if (i != op.conditions.size() - 1) conditions_str += ", ";
 		}
-		string address = to_string(size_t(&hash_table));
+		string address = to_string(size_t(&hash_table)) + " - " + to_string(size_t(&op));
 		ht_name = conditions_str + " - " + address;
 	}
 

@@ -492,24 +492,7 @@ static idx_t MergeJoinComplexBlocksEqual(BlockMergeInfo &l, BlockMergeInfo &r, i
 	const auto entry_size = l.state.sort_layout.entry_size;
 
 	idx_t result_count = 0;
-	idx_t prev_left_end = 0;
-	int hit = false;
 	while (true) {
-		if (hit == 0 && l.entry_idx < prev_left_end) {
-			// found match
-			l.result.set_index(result_count, sel_t(l.entry_idx));
-			r.result.set_index(result_count, sel_t(r.entry_idx));
-			result_count++;
-			// move left side forward
-			l.entry_idx++;
-			l_ptr += entry_size;
-			if (result_count == STANDARD_VECTOR_SIZE) {
-				// out of space!
-				break;
-			}
-			continue;
-		}
-
 		if (l.entry_idx < l.not_null) {
 			int comp_res;
 			if (all_constant) {
@@ -542,8 +525,6 @@ static idx_t MergeJoinComplexBlocksEqual(BlockMergeInfo &l, BlockMergeInfo &r, i
 			}
 		}
 
-		prev_left_end = l.entry_idx;
-
 		// right side smaller, or left side exhausted: move right pointer forward reset left side to start
 		r.entry_idx++;
 		if (r.entry_idx >= r.not_null) {
@@ -553,16 +534,6 @@ static idx_t MergeJoinComplexBlocksEqual(BlockMergeInfo &l, BlockMergeInfo &r, i
 
 		l_ptr = l_start + entry_size * prev_left_index;
 		l.entry_idx = prev_left_index;
-
-		if (l.entry_idx < prev_left_end) {
-			if (all_constant) {
-				hit = FastMemcmp(l_ptr, r_ptr, cmp_size);
-			} else {
-				lread.entry_idx = l.entry_idx;
-				rread.entry_idx = r.entry_idx;
-				hit = Comparators::CompareTuple(lread, rread, l_ptr, r_ptr, l.state.sort_layout, external);
-			}
-		}
 	}
 	return result_count;
 }

@@ -265,6 +265,9 @@ OperatorResultType CachingPhysicalOperator::Execute(ExecutionContext &context, D
 	if (chunk.size() < CACHE_THRESHOLD) {
 		// we have filtered out a significant amount of tuples
 		// add this chunk to the cache and continue
+		Profiler profiler;
+		profiler.Start();
+		string address = to_string(size_t(this));
 
 		if (!state.cached_chunk) {
 			state.cached_chunk = make_uniq<DataChunk>();
@@ -278,11 +281,24 @@ OperatorResultType CachingPhysicalOperator::Execute(ExecutionContext &context, D
 			// chunk cache full: return it
 			chunk.Move(*state.cached_chunk);
 			state.cached_chunk->Initialize(Allocator::Get(context.client), chunk.GetTypes());
+			BeeProfiler::Get().InsertStatRecord("[Compact Chunks - Out - 0x" + address + "]", profiler.Elapsed());
 			return child_result;
 		} else {
 			// chunk cache not full return empty result
 			chunk.Reset();
 		}
+
+		//		if (state.cached_chunk->size() >= (STANDARD_VECTOR_SIZE - CACHE_THRESHOLD) ||
+		//		    child_result == OperatorResultType::FINISHED) {
+		//			// chunk cache full: return it
+		//			chunk.Move(*state.cached_chunk);
+		//			state.cached_chunk->Initialize(Allocator::Get(context.client), chunk.GetTypes());
+		//			BeeProfiler::Get().InsertStatRecord("[Compact Chunks - Out - 0x" + address + "]",
+		// profiler.Elapsed()); 			return child_result; 		} else {
+		//			// chunk cache not full return empty result
+		//			chunk.Reset();
+		//		}
+		BeeProfiler::Get().InsertStatRecord("[Compact Chunks - In - 0x" + address + "]", profiler.Elapsed());
 	}
 #endif
 
