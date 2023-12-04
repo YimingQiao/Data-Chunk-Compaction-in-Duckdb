@@ -6,7 +6,7 @@ namespace duckdb {
 
 PhysicalFilter::PhysicalFilter(vector<LogicalType> types, vector<unique_ptr<Expression>> select_list,
                                idx_t estimated_cardinality)
-    : CachingPhysicalOperator(PhysicalOperatorType::FILTER, std::move(types), estimated_cardinality) {
+    : CompactingPhysicalOperator(PhysicalOperatorType::FILTER, std::move(types), estimated_cardinality) {
 	D_ASSERT(select_list.size() > 0);
 	if (select_list.size() > 1) {
 		// create a big AND out of the expressions

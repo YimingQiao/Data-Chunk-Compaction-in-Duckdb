@@ -215,7 +215,7 @@ void PhysicalOperator::Verify() {
 #endif
 }
 
-bool CachingPhysicalOperator::CanCacheType(const LogicalType &type) {
+bool CompactingPhysicalOperator::CanCacheType(const LogicalType &type) {
 	switch (type.id()) {
 		case LogicalTypeId::LIST:
 		case LogicalTypeId::MAP:
@@ -234,20 +234,20 @@ bool CachingPhysicalOperator::CanCacheType(const LogicalType &type) {
 	}
 }
 
-CachingPhysicalOperator::CachingPhysicalOperator(PhysicalOperatorType type, vector<LogicalType> types_p,
-                                                 idx_t estimated_cardinality)
+CompactingPhysicalOperator::CompactingPhysicalOperator(PhysicalOperatorType type, vector<LogicalType> types_p,
+                                                       idx_t estimated_cardinality)
     : PhysicalOperator(type, std::move(types_p), estimated_cardinality) {
-	caching_supported = true;
+	compacting_supported = true;
 	for (auto &col_type : types) {
 		if (!CanCacheType(col_type)) {
-			caching_supported = false;
+			compacting_supported = false;
 			break;
 		}
 	}
 }
 
-OperatorResultType CachingPhysicalOperator::Execute(ExecutionContext &context, DataChunk &input, DataChunk &chunk,
-                                                    GlobalOperatorState &gstate, OperatorState &state_p) const {
+OperatorResultType CompactingPhysicalOperator::Execute(ExecutionContext &context, DataChunk &input, DataChunk &chunk,
+                                                       GlobalOperatorState &gstate, OperatorState &state_p) const {
 	auto &state = state_p.Cast<CachingOperatorState>();
 
 	Profiler profiler_exec;
@@ -264,13 +264,13 @@ OperatorResultType CachingPhysicalOperator::Execute(ExecutionContext &context, D
 #if STANDARD_VECTOR_SIZE >= 128
 	if (!state.initialized) {
 		state.initialized = true;
-		state.can_cache_chunk = caching_supported && PhysicalOperator::OperatorCachingAllowed(context);
+		state.can_cache_chunk = compacting_supported && PhysicalOperator::OperatorCachingAllowed(context);
 	}
 	if (!state.can_cache_chunk) {
 		return child_result;
 	}
 	// TODO chunk size of 0 should not result in a cache being created!
-	if (chunk.size() < CACHE_THRESHOLD) {
+	if (chunk.size() < compact_threshold) {
 		// we have filtered out a significant amount of tuples
 		// add this chunk to the cache and continue
 		Profiler profiler;
@@ -289,7 +289,7 @@ OperatorResultType CachingPhysicalOperator::Execute(ExecutionContext &context, D
 
 		profiler.Start();
 
-		if (state.cached_chunk->size() >= (STANDARD_VECTOR_SIZE - CACHE_THRESHOLD) ||
+		if (state.cached_chunk->size() >= (STANDARD_VECTOR_SIZE - compact_threshold) ||
 		    child_result == OperatorResultType::FINISHED) {
 			// chunk cache full: return it
 			chunk.Move(*state.cached_chunk);
@@ -311,8 +311,8 @@ OperatorResultType CachingPhysicalOperator::Execute(ExecutionContext &context, D
 	return child_result;
 }
 
-OperatorFinalizeResultType CachingPhysicalOperator::FinalExecute(ExecutionContext &context, DataChunk &chunk,
-                                                                 GlobalOperatorState &gstate,
+OperatorFinalizeResultType CompactingPhysicalOperator::FinalExecute(ExecutionContext &context, DataChunk &chunk,
+                                                                    GlobalOperatorState &gstate,
                                                                  OperatorState &state_p) const {
 	auto &state = state_p.Cast<CachingOperatorState>();
 	if (state.cached_chunk) {

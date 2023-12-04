@@ -217,13 +217,13 @@ public:
 };
 
 //! Base class that caches output from child Operator class. Note that Operators inheriting from this class should also
-//! inherit their state class from the CachingOperatorState.
-class CachingPhysicalOperator : public PhysicalOperator {
+//! inherit their state class from the CompactingOperatorState.
+class CompactingPhysicalOperator : public PhysicalOperator {
 public:
-	static constexpr const idx_t CACHE_THRESHOLD = 1024;
-	CachingPhysicalOperator(PhysicalOperatorType type, vector<LogicalType> types, idx_t estimated_cardinality);
+	idx_t compact_threshold = 1024;
+	CompactingPhysicalOperator(PhysicalOperatorType type, vector<LogicalType> types, idx_t estimated_cardinality);
 
-	bool caching_supported;
+	bool compacting_supported;
 
 public:
 	OperatorResultType Execute(ExecutionContext &context, DataChunk &input, DataChunk &chunk,
@@ -232,7 +232,7 @@ public:
 	                                        OperatorState &state) const final;
 
 	bool RequiresFinalExecute() const final {
-		return caching_supported;
+		return compacting_supported;
 	}
 
 protected:
@@ -244,4 +244,4 @@ private:
 	bool CanCacheType(const LogicalType &type);
 };
 
-} // namespace duckdb
+}  // namespace duckdb

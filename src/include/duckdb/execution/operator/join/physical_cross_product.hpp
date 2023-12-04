@@ -14,7 +14,7 @@
 namespace duckdb {
 
 //! PhysicalCrossProduct represents a cross product between two tables
-class PhysicalCrossProduct : public CachingPhysicalOperator {
+class PhysicalCrossProduct : public CompactingPhysicalOperator {
 public:
 	static constexpr const PhysicalOperatorType TYPE = PhysicalOperatorType::CROSS_PRODUCT;
 

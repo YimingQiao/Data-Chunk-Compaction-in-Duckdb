@@ -14,7 +14,7 @@
 namespace duckdb {
 
 //! PhysicalJoin represents the base class of the join operators
-class PhysicalJoin : public CachingPhysicalOperator {
+class PhysicalJoin : public CompactingPhysicalOperator {
 public:
 	static constexpr const PhysicalOperatorType TYPE = PhysicalOperatorType::INVALID;
 
