@@ -8,6 +8,7 @@
 
 #pragma once
 
+#include <fstream>
 #include <iostream>
 
 #include "duckdb/common/chrono.hpp"
@@ -220,5 +221,87 @@ private:
 	mutex mtx_;
 	Profiler timer_;
 	string cur_stage_;
+};
+
+class HistProfiler {
+public:
+	const static bool kEnableProfiling = true;
+
+public:
+	static HistProfiler &Get() {
+		static HistProfiler instance;
+		return instance;
+	}
+
+	inline void InsertRecord(string name, size_t key, double value) {
+		InsertRecord(std::move(name), key, size_t(value * 1e9));
+	}
+
+	inline void InsertRecord(string name, size_t key, size_t value) {
+		if (kEnableProfiling) {
+			D_ASSERT(key > 0 && key <= STANDARD_VECTOR_SIZE);
+			// insert record into the histogram of [name]
+			auto &hist = hists_[name];
+			hist.values_[key] += value;
+			hist.cnt_[key] += 1;
+		}
+	}
+
+	inline void PrintResults() const {
+		if (kEnableProfiling) {
+			for (auto &pair : hists_) {
+				const auto &name = pair.first;
+				const auto &hist = pair.second;
+
+				std::cerr << "-------\n";
+				std::cerr << name << '\n';
+				for (size_t i = 1; i <= STANDARD_VECTOR_SIZE; ++i) {
+					if (hist.cnt_[i] > 0) {
+						std::cerr << i << ": " << hist.values_[i] / double(1e3) / hist.cnt_[i] << " us\t"
+						          << hist.cnt_[i] << '\n';
+					}
+				}
+			}
+		}
+	}
+
+	// output to csv file, each hist has a file.
+	inline void ToCSV() const {
+		if (kEnableProfiling) {
+			for (auto &pair : hists_) {
+				const auto &name = pair.first;
+				const auto &hist = pair.second;
+
+				// filter these filters
+				if (name.find("FILTER") != std::string::npos) {
+					continue;
+				}
+
+				std::string file_name = name + ".csv";
+				std::ofstream out(file_name);
+				out << "key, value, cnt\n";
+				for (size_t i = 1; i <= STANDARD_VECTOR_SIZE; ++i) {
+					if (hist.cnt_[i] == 0) continue;
+					out << i << "," << hist.values_[i] / double(1e3) / hist.cnt_[i] << "," << hist.cnt_[i] << "\n";
+				}
+				out.close();
+			}
+		}
+	}
+
+	inline void Clear() {
+		hists_.clear();
+	}
+
+private:
+	struct Histogram {
+		vector<atomic<size_t>> values_;  // in ns
+		vector<atomic<size_t>> cnt_;
+
+		Histogram() : values_(STANDARD_VECTOR_SIZE + 1), cnt_(STANDARD_VECTOR_SIZE + 1) {
+		}
+	};
+
+	unordered_map<string, Histogram> hists_;
 };
 }  // namespace duckdb

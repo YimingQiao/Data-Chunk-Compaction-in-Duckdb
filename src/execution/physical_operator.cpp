@@ -250,8 +250,16 @@ OperatorResultType CachingPhysicalOperator::Execute(ExecutionContext &context, D
                                                     GlobalOperatorState &gstate, OperatorState &state_p) const {
 	auto &state = state_p.Cast<CachingOperatorState>();
 
+	Profiler profiler_exec;
+	profiler_exec.Start();
+	string address = to_string(size_t(this));
+
 	// Execute child operator
 	auto child_result = ExecuteInternal(context, input, chunk, gstate, state);
+
+	double t = profiler_exec.Elapsed();
+	HistProfiler::Get().InsertRecord("[" + GetName() + " Execute - Out - 0x" + address + "]", chunk.size(), t);
+	HistProfiler::Get().InsertRecord("[" + GetName() + " Execute - In - 0x" + address + "]", input.size(), t);
 
 #if STANDARD_VECTOR_SIZE >= 128
 	if (!state.initialized) {
@@ -267,7 +275,6 @@ OperatorResultType CachingPhysicalOperator::Execute(ExecutionContext &context, D
 		// add this chunk to the cache and continue
 		Profiler profiler;
 		profiler.Start();
-		string address = to_string(size_t(this));
 
 		if (!state.cached_chunk) {
 			state.cached_chunk = make_uniq<DataChunk>();
@@ -276,29 +283,28 @@ OperatorResultType CachingPhysicalOperator::Execute(ExecutionContext &context, D
 
 		state.cached_chunk->Append(chunk);
 
+		HistProfiler::Get().InsertRecord("[" + GetName() + " Compact - In - 0x" + address + "]", chunk.size(),
+		                                 profiler.Elapsed());
+		BeeProfiler::Get().InsertStatRecord("[" + GetName() + " Compact - In - 0x" + address + "]", profiler.Elapsed());
+
+		profiler.Start();
+
 		if (state.cached_chunk->size() >= (STANDARD_VECTOR_SIZE - CACHE_THRESHOLD) ||
 		    child_result == OperatorResultType::FINISHED) {
 			// chunk cache full: return it
 			chunk.Move(*state.cached_chunk);
 			state.cached_chunk->Initialize(Allocator::Get(context.client), chunk.GetTypes());
-			BeeProfiler::Get().InsertStatRecord("[Compact Chunks - Out - 0x" + address + "]", profiler.Elapsed());
+
+			HistProfiler::Get().InsertRecord("[" + GetName() + " Compact - Out - 0x" + address + "]", chunk.size(),
+			                                 profiler.Elapsed());
+			BeeProfiler::Get().InsertStatRecord("[" + GetName() + " Compact - Out - 0x" + address + "]",
+			                                    profiler.Elapsed());
+
 			return child_result;
 		} else {
 			// chunk cache not full return empty result
 			chunk.Reset();
 		}
-
-		//		if (state.cached_chunk->size() >= (STANDARD_VECTOR_SIZE - CACHE_THRESHOLD) ||
-		//		    child_result == OperatorResultType::FINISHED) {
-		//			// chunk cache full: return it
-		//			chunk.Move(*state.cached_chunk);
-		//			state.cached_chunk->Initialize(Allocator::Get(context.client), chunk.GetTypes());
-		//			BeeProfiler::Get().InsertStatRecord("[Compact Chunks - Out - 0x" + address + "]",
-		// profiler.Elapsed()); 			return child_result; 		} else {
-		//			// chunk cache not full return empty result
-		//			chunk.Reset();
-		//		}
-		BeeProfiler::Get().InsertStatRecord("[Compact Chunks - In - 0x" + address + "]", profiler.Elapsed());
 	}
 #endif
 

@@ -14,6 +14,8 @@ void ExecuteQuery(duckdb::Connection &con, std::string query, size_t running_tim
 		auto result = con.Query(query);
 
 		duckdb::BeeProfiler::Get().EndProfiling();
+		duckdb::HistProfiler::Get().ToCSV();
+		duckdb::HistProfiler::Get().Clear();
 		std::cerr << "-------------------------------------------------------------------------------------------------"
 		             "-------------------\n";
 
@@ -53,42 +55,31 @@ int main() {
 		    "CREATE OR REPLACE TABLE student AS "
 		    "SELECT "
 		    "    CAST(stu_id AS INT) AS stu_id, "
-		    "    CAST(stu_id % CAST(2e6 AS INT) AS INT) AS major_id, "
+		    "    CAST((RANDOM() * 5e6) AS INT) AS major_id, "
 		    "    CAST((RANDOM() * 100) AS TINYINT) AS age "
-		    "FROM generate_series(1,  CAST(2e7 AS INT)) vals(stu_id);");
+		    "FROM generate_series(1,  CAST(5e7 AS INT)) vals(stu_id);");
 
 		con.Query(
 		    "CREATE OR REPLACE TABLE department AS "
 		    "SELECT "
-		    "    CAST(major_id * 32 % 2e6 AS INT) AS major_id, "
-		    " 	"
-		    "'major_"
-		    "qqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqq"
-		    "qqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqq"
-		    "qqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqq"
-		    "qqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqq"
-		    "qqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqq"
-		    "qqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqq"
-		    "qqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqq"
-		    "qqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqq"
-		    "qqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqq"
-		    "qqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqq' || (major_id) AS name, "
-		    "FROM generate_series(1,  CAST(2e6 AS INT)) vals(major_id);");
+		    "    CAST(major_id * 4 % 5e6 AS INT) AS major_id, "
+		    "	'major_' || (major_id) AS name, "
+		    "FROM generate_series(1,  CAST(5e6 AS INT)) vals(major_id);");
 
 		con.Query(
 		    "CREATE OR REPLACE TABLE room AS "
 		    "SELECT "
-		    "    CAST(room_id AS INT) AS room_id, "
-		    "    CAST(room_id * 20 % 2e7 AS INT) AS stu_id, "
-		    "    CAST(room_id % 2e6 AS INT) AS type "
-		    "FROM generate_series(1,  CAST(2e7 AS INT)) vals(room_id);");
+		    "	'room_id_' || room_id AS room_id, "
+		    "    CAST(room_id * 4 % 5e7 AS INT) AS stu_id, "
+		    "    CAST(room_id % 5e6 AS INT) AS type "
+		    "FROM generate_series(1,  CAST(5e7 AS INT)) vals(room_id);");
 
 		con.Query(
 		    "CREATE OR REPLACE TABLE type AS "
 		    "SELECT "
-		    "    CAST(type % 2e6 AS INT) AS type, "
+		    "    CAST(type % 5e6 AS INT) AS type, "
 		    "    'room_type_' || type AS info "
-		    "FROM generate_series(1,  CAST(2e6 AS INT)) vals(type);");
+		    "FROM generate_series(1,  CAST(5e6 AS INT)) vals(type);");
 	}
 
 	// ---------------------------- ------- Threads Settings -----------------------------------------------
