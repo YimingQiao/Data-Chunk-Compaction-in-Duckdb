@@ -8,19 +8,20 @@
 
 #pragma once
 
+#include <stack>
+
 #include "duckdb/common/common.hpp"
+#include "duckdb/common/deque.hpp"
 #include "duckdb/common/enums/profiler_format.hpp"
+#include "duckdb/common/pair.hpp"
 #include "duckdb/common/profiler.hpp"
+#include "duckdb/common/reference_map.hpp"
 #include "duckdb/common/string_util.hpp"
 #include "duckdb/common/types/data_chunk.hpp"
 #include "duckdb/common/unordered_map.hpp"
 #include "duckdb/common/winapi.hpp"
-#include "duckdb/execution/physical_operator.hpp"
 #include "duckdb/execution/expression_executor_state.hpp"
-#include "duckdb/common/reference_map.hpp"
-#include <stack>
-#include "duckdb/common/pair.hpp"
-#include "duckdb/common/deque.hpp"
+#include "duckdb/execution/physical_operator.hpp"
 
 namespace duckdb {
 class ClientContext;
@@ -105,6 +106,11 @@ public:
 	DUCKDB_API void EndOperator(optional_ptr<DataChunk> chunk);
 	DUCKDB_API void Flush(const PhysicalOperator &phys_op, ExpressionExecutor &expression_executor, const string &name,
 	                      int id);
+
+	DUCKDB_API OperatorInformation *GetOperatorInfo(const PhysicalOperator &phys_op) {
+		if (timings.count(phys_op) == 0) return nullptr;
+		return &timings[phys_op];
+	}
 
 	~OperatorProfiler() {
 	}
@@ -262,4 +268,4 @@ public:
 		this->prev_profilers_size = DEFAULT_SIZE;
 	}
 };
-} // namespace duckdb
+}  // namespace duckdb

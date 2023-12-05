@@ -1,5 +1,6 @@
 #include "duckdb/execution/operator/join/physical_hash_join.hpp"
 
+#include "duckdb/common/negative_feedback.hpp"
 #include "duckdb/common/vector_operations/vector_operations.hpp"
 #include "duckdb/execution/expression_executor.hpp"
 #include "duckdb/function/aggregate/distributive_functions.hpp"
@@ -37,6 +38,12 @@ PhysicalHashJoin::PhysicalHashJoin(LogicalOperator &op, unique_ptr<PhysicalOpera
 	// for ANTI, SEMI and MARK join, we only need to store the keys, so for these the build types are empty
 	if (join_type != JoinType::ANTI && join_type != JoinType::SEMI && join_type != JoinType::MARK) {
 		build_types = LogicalOperator::MapTypes(children[1]->GetTypes(), right_projection_map);
+	}
+
+	// yiqiao: compacting threshold setting
+	auto_tuning = true;
+	if (auto_tuning) {
+		CompactTuner::Get().Initialize(size_t(this));
 	}
 }
 

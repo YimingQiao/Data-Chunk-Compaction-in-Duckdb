@@ -20,6 +20,11 @@ public:
 
 	//! The operator profiler for the individual thread context
 	OperatorProfiler profiler;
+
+	//! yiqiao: The time profiler for data chunk processing time
+	bool started = false;
+	Profiler compact_profiler;
+	vector<double> time_stores;
 };
 
 }  // namespace duckdb
