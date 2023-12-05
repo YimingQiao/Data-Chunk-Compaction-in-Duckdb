@@ -223,13 +223,13 @@ private:
 	string cur_stage_;
 };
 
-class HistProfiler {
+class ZebraProfiler {
 public:
 	const static bool kEnableProfiling = true;
 
 public:
-	static HistProfiler &Get() {
-		static HistProfiler instance;
+	static ZebraProfiler &Get() {
+		static ZebraProfiler instance;
 		return instance;
 	}
 
@@ -239,7 +239,13 @@ public:
 
 	inline void InsertRecord(string name, size_t key, size_t value) {
 		if (kEnableProfiling) {
-			D_ASSERT(key > 0 && key <= STANDARD_VECTOR_SIZE);
+			D_ASSERT(key <= STANDARD_VECTOR_SIZE);
+
+			if (hists_.count(name) == 0) {
+				lock_guard<std::mutex> lock(mutex_);
+				hists_[name] = Histogram();
+			}
+
 			// insert record into the histogram of [name]
 			auto &hist = hists_[name];
 			hist.values_[key] += value;
@@ -273,11 +279,11 @@ public:
 				const auto &hist = pair.second;
 
 				// filter these filters
-				if (name.find("FILTER") != std::string::npos) {
+				if (name.find("FILTER") != string::npos) {
 					continue;
 				}
 
-				std::string file_name = name + ".csv";
+				string file_name = name + ".csv";
 				std::ofstream out(file_name);
 				out << "key, value, cnt\n";
 				for (size_t i = 1; i <= STANDARD_VECTOR_SIZE; ++i) {
@@ -302,6 +308,7 @@ private:
 		}
 	};
 
+	mutex mutex_;
 	unordered_map<string, Histogram> hists_;
 };
 }  // namespace duckdb

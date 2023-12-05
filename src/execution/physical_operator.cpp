@@ -258,8 +258,8 @@ OperatorResultType CompactingPhysicalOperator::Execute(ExecutionContext &context
 	auto child_result = ExecuteInternal(context, input, chunk, gstate, state);
 
 	double t = profiler_exec.Elapsed();
-	HistProfiler::Get().InsertRecord("[" + GetName() + " Execute - Out - 0x" + address + "]", chunk.size(), t);
-	HistProfiler::Get().InsertRecord("[" + GetName() + " Execute - In - 0x" + address + "]", input.size(), t);
+	ZebraProfiler::Get().InsertRecord("[" + GetName() + " Execute - Out - 0x" + address + "]", chunk.size(), t);
+	ZebraProfiler::Get().InsertRecord("[" + GetName() + " Execute - In - 0x" + address + "]", input.size(), t);
 
 #if STANDARD_VECTOR_SIZE >= 128
 	if (!state.initialized) {
@@ -281,10 +281,12 @@ OperatorResultType CompactingPhysicalOperator::Execute(ExecutionContext &context
 			state.cached_chunk->Initialize(Allocator::Get(context.client), chunk.GetTypes());
 		}
 
-		state.cached_chunk->Append(chunk);
+		// yiqiao: this is a hack to avoid the case where the chunk is too big to fit in the cache
+		if (chunk.size() > STANDARD_VECTOR_SIZE - state.cached_chunk->size()) {
+			return child_result;
+		}
 
-		HistProfiler::Get().InsertRecord("[" + GetName() + " Compact - In - 0x" + address + "]", chunk.size(),
-		                                 profiler.Elapsed());
+		state.cached_chunk->Append(chunk);
 		BeeProfiler::Get().InsertStatRecord("[" + GetName() + " Compact - In - 0x" + address + "]", profiler.Elapsed());
 
 		profiler.Start();
@@ -295,8 +297,8 @@ OperatorResultType CompactingPhysicalOperator::Execute(ExecutionContext &context
 			chunk.Move(*state.cached_chunk);
 			state.cached_chunk->Initialize(Allocator::Get(context.client), chunk.GetTypes());
 
-			HistProfiler::Get().InsertRecord("[" + GetName() + " Compact - Out - 0x" + address + "]", chunk.size(),
-			                                 profiler.Elapsed());
+			ZebraProfiler::Get().InsertRecord("[" + GetName() + " Compact - Out - 0x" + address + "]", chunk.size(),
+			                                  profiler.Elapsed());
 			BeeProfiler::Get().InsertStatRecord("[" + GetName() + " Compact - Out - 0x" + address + "]",
 			                                    profiler.Elapsed());
 
@@ -313,7 +315,7 @@ OperatorResultType CompactingPhysicalOperator::Execute(ExecutionContext &context
 
 OperatorFinalizeResultType CompactingPhysicalOperator::FinalExecute(ExecutionContext &context, DataChunk &chunk,
                                                                     GlobalOperatorState &gstate,
-                                                                 OperatorState &state_p) const {
+                                                                    OperatorState &state_p) const {
 	auto &state = state_p.Cast<CachingOperatorState>();
 	if (state.cached_chunk) {
 		chunk.Move(*state.cached_chunk);

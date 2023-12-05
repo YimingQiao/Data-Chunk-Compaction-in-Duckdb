@@ -2,6 +2,7 @@
 #include <random>
 
 #include "duckdb.hpp"
+#include "duckdb/common/negative_feedback.hpp"
 #include "duckdb/optimizer/thread_scheduler.hpp"
 
 void ExecuteQuery(duckdb::Connection &con, std::string query, size_t running_times, size_t showing_times) {
@@ -14,8 +15,12 @@ void ExecuteQuery(duckdb::Connection &con, std::string query, size_t running_tim
 		auto result = con.Query(query);
 
 		duckdb::BeeProfiler::Get().EndProfiling();
-		duckdb::HistProfiler::Get().ToCSV();
-		duckdb::HistProfiler::Get().Clear();
+
+		duckdb::ZebraProfiler::Get().ToCSV();
+		duckdb::ZebraProfiler::Get().Clear();
+
+		duckdb::CompactionController::Get().Reset();
+
 		std::cerr << "-------------------------------------------------------------------------------------------------"
 		             "-------------------\n";
 
@@ -59,19 +64,26 @@ int main() {
 		    "    CAST((RANDOM() * 100) AS TINYINT) AS age "
 		    "FROM generate_series(1,  CAST(5e7 AS INT)) vals(stu_id);");
 
+		std::string a_long_string = "abc";
+		for (size_t i = 0; i < 2; i++) {
+			a_long_string += "abc";
+		}
+
 		con.Query(
 		    "CREATE OR REPLACE TABLE department AS "
 		    "SELECT "
 		    "    CAST(major_id * 4 % 5e6 AS INT) AS major_id, "
-		    "	'major_' || (major_id) AS name, "
+		    "	'major_" +
+		    a_long_string +
+		    "' || (major_id) AS name, "
 		    "FROM generate_series(1,  CAST(5e6 AS INT)) vals(major_id);");
 
 		con.Query(
 		    "CREATE OR REPLACE TABLE room AS "
 		    "SELECT "
-		    "	'room_id_' || room_id AS room_id, "
+		    "	 room_id AS room_id, "
 		    "    CAST(room_id * 4 % 5e7 AS INT) AS stu_id, "
-		    "    CAST(room_id % 5e6 AS INT) AS type "
+		    "    CAST((RANDOM() * 5e6) AS INT) AS type "
 		    "FROM generate_series(1,  CAST(5e7 AS INT)) vals(room_id);");
 
 		con.Query(
@@ -90,7 +102,7 @@ int main() {
 			scheduler.SetThreadSetting(4, VecStr {"SEQ_SCAN ", "READ_PARQUET "}, VecStr {"HASH_JOIN"}, false);
 			scheduler.SetThreadSetting(32, VecStr {"HT_FINALIZE"}, VecStr {"HT_FINALIZE"}, false);
 			// Probe Hash Table
-			scheduler.SetThreadSetting(8, VecStr {"SEQ_SCAN ", "READ_PARQUET "}, VecStr {"EXPLAIN_ANALYZE"}, true);
+			scheduler.SetThreadSetting(16, VecStr {"SEQ_SCAN ", "READ_PARQUET "}, VecStr {"EXPLAIN_ANALYZE"}, true);
 		}
 		// [BREAKER]
 		{
@@ -107,6 +119,11 @@ int main() {
 		}
 	}
 
+	// ---------------------------------------- Compaction Setting -----------------------------------------
+	std::vector<size_t> arms = {8, 16, 32, 64, 128, 256, 512, 1024};
+	std::vector<double> means(arms.size(), 0);
+	duckdb::CompactionController::Get().Initialize(arms, means);
+
 	// ------------------------------------------ Query -----------------------------------------------------
 	{
 		// BUSHY join query
@@ -122,11 +139,11 @@ int main() {
 		// SEQ join query
 		std::string query =
 		    "EXPLAIN ANALYZE "
-		    "SELECT student.stu_id, department.name, room.room_id, type.type "
-		    "FROM student, department, room, type "
+		    "SELECT student.stu_id, department.name, room.room_id, type.type,  "
+		    "FROM student, room, department, type "
 		    "WHERE student.stu_id = room.stu_id AND student.major_id = department.major_id AND room.type = type.type;";
 
 		// ExecuteQuery(con, bushy_query, 2, 1);
-		ExecuteQuery(con, query, 2, 1);
+		ExecuteQuery(con, query, 2, 2);
 	}
 }

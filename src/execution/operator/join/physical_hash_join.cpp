@@ -38,6 +38,18 @@ PhysicalHashJoin::PhysicalHashJoin(LogicalOperator &op, unique_ptr<PhysicalOpera
 	if (join_type != JoinType::ANTI && join_type != JoinType::SEMI && join_type != JoinType::MARK) {
 		build_types = LogicalOperator::MapTypes(children[1]->GetTypes(), right_projection_map);
 	}
+
+	// yiqiao: compacting threshold setting
+	if (children[0]->GetName() == "FILTER") {
+		compact_threshold = 1024;
+	} else if (children[0]->GetName() == "HASH_JOIN") {
+		compact_threshold = 1;
+	} else {
+		// take the default value
+	}
+	std::cerr << " [PARAMETERS] Compacting Threshold for " + GetName() + " - 0x" + to_string(size_t(this)) + ": " +
+	                 to_string(compact_threshold)
+	          << "\n";
 }
 
 PhysicalHashJoin::PhysicalHashJoin(LogicalOperator &op, unique_ptr<PhysicalOperator> left,

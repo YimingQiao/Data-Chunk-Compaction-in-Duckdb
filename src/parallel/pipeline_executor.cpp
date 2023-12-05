@@ -1,6 +1,8 @@
 #include "duckdb/parallel/pipeline_executor.hpp"
 
 #include "duckdb/common/limits.hpp"
+#include "duckdb/common/negative_feedback.hpp"
+#include "duckdb/execution/operator/join/physical_hash_join.hpp"
 #include "duckdb/main/client_context.hpp"
 
 #ifdef DUCKDB_DEBUG_ASYNC_SINK_SOURCE
@@ -150,7 +152,7 @@ SinkNextBatchType PipelineExecutor::NextBatch(duckdb::DataChunk &source_chunk) {
 	auto next_batch_result = pipeline.sink->NextBatch(context, next_batch_input);
 
 	if (next_batch_result == SinkNextBatchType::BLOCKED) {
-		partition_info.batch_index = current_batch; // set batch_index back to what it was before
+		partition_info.batch_index = current_batch;  // set batch_index back to what it was before
 		return SinkNextBatchType::BLOCKED;
 	}
 
@@ -202,6 +204,34 @@ PipelineExecuteResult PipelineExecutor::Execute(idx_t max_chunks) {
 				if (source_result == SourceResultType::FINISHED) {
 					exhausted_source = true;
 				}
+
+				Profiler profiler;
+				profiler.Start();
+				// yiqiao: this is a hack to tune parameters for compacting
+				bool flag = (pipeline.operators.size() >= 5) &&
+				            (pipeline.operators[2].get().type == PhysicalOperatorType::HASH_JOIN) &&
+				            (pipeline.operators[3].get().type == PhysicalOperatorType::HASH_JOIN);
+
+				if (flag) {
+					auto &join_1 = (PhysicalHashJoin &)pipeline.operators[2].get();
+					auto &join_2 = (PhysicalHashJoin &)pipeline.operators[3].get();
+					if (thread.started) {
+						// update compacting threshold
+						double reward = thread.profiler_compaction.Elapsed() * 1e3;
+						CompactionController::Get().UpdateArm(join_1.compact_threshold, 1 / reward);
+
+						// std::cerr << "Threshold: " << join_1.compact_threshold << "\tReward: " << 1 / reward << "\n";
+					}
+					size_t threshold = CompactionController::Get().SelectArm();
+					join_1.compact_threshold = threshold;
+					join_2.compact_threshold = threshold;
+
+					if (!thread.started) {
+						thread.started = true;
+					}
+					thread.profiler_compaction.Start();
+				}
+				BeeProfiler::Get().InsertStatRecord("[ParameterTuning - Compaction Threshold]", profiler.Elapsed());
 			}
 
 			if (requires_batch_index) {

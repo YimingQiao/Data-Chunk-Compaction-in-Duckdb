@@ -20,6 +20,10 @@ public:
 
 	//! The operator profiler for the individual thread context
 	OperatorProfiler profiler;
+
+	//! yiqiao: The time profiler for data chunk processing time
+	bool started = false;
+	Profiler profiler_compaction;
 };
 
 }  // namespace duckdb
