@@ -499,7 +499,6 @@ OperatorResultType PipelineExecutor::Execute(DataChunk &input, DataChunk &result
 		result.Reference(input);
 		return OperatorResultType::NEED_MORE_INPUT;
 	}
-	Profiler profiler;
 	while (true) {
 		if (context.client.interrupted) {
 			throw InterruptException();
