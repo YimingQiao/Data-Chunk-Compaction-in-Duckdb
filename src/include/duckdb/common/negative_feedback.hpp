@@ -18,19 +18,15 @@ namespace duckdb {
 // I use UCB1 (https://cse442-17f.github.io/LinUCB/) to select the best
 class MultiArmedBandit {
 public:
-	// The reward is always 1
-	static constexpr double kReward = 1;
-
-public:
 	MultiArmedBandit(size_t n_arms, const std::vector<double> &means)
-	    : n_arms_(n_arms), est_means_(means), n_select_(n_arms, 0), n_update_(n_arms, 0), times_(0), best_reward_(0) {
+	    : n_arms_(n_arms), est_means_(means), n_select_(n_arms, 0), n_update_(n_arms, 0), times_(0) {
 	}
 
 	// Selects an arm based on the UCB1 algorithm
 	inline size_t SelectArm() {
 		std::lock_guard<std::mutex> lock(mutex_);
 
-		if (times_ < n_arms_ * 10) {
+		if (times_ < n_arms_ * 8) {
 			// initialize experimental means by pulling each arm once
 			size_t arm = times_ % n_arms_;
 
@@ -83,8 +79,6 @@ private:
 	std::vector<size_t> n_select_;
 	std::vector<size_t> n_update_;
 	size_t times_;
-
-	double best_reward_;
 };
 
 class CompactTuner {
@@ -94,8 +88,7 @@ public:
 		return instance;
 	}
 
-	inline void Initialize(size_t address,
-	                       const std::vector<size_t> &arms = {8, 16, 32, 64, 128, 256, 384, 512, 768, 1024}) {
+	inline void Initialize(size_t address, const std::vector<size_t> &arms = {32, 64, 128, 256, 384, 512, 768, 1024}) {
 		D_ASSERT(package_index_.count(address) == 0);
 
 		package_index_[address] = bandit_packages_.size();
