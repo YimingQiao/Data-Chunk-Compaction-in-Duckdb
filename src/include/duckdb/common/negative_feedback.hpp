@@ -54,7 +54,8 @@ public:
 	// Updates the arm with the given weight
 	inline void UpdateArm(size_t arm, double reward) {
 		std::lock_guard<std::mutex> lock(mutex_);
-		double ratio = n_update_[arm] / (n_update_[arm] + 1.0);
+		size_t update_factor = std::min(n_update_[arm], size_t(16));
+		double ratio = update_factor / (update_factor + 1.0);
 		est_means_[arm] = est_means_[arm] * ratio + reward * (1 - ratio);
 		n_update_[arm]++;
 	}

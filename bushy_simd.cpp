@@ -97,7 +97,7 @@ int main() {
 		std::string query =
 		    "EXPLAIN ANALYZE "
 		    "SELECT student.stu_id, department.name, room.room_id, type.type,  "
-		    "FROM student, room, department, type "
+		    "FROM student, department, room, type "
 		    "WHERE student.stu_id = room.stu_id AND student.major_id = department.major_id AND room.type = type.type;";
 
 		// ExecuteQuery(con, bushy_query, 2, 1);
@@ -113,35 +113,61 @@ int main() {
 }
 
 void GenerateTables(duckdb::Connection &con) {
+	// Table student
 	con.Query(
 	    "CREATE OR REPLACE TABLE student AS "
 	    "SELECT "
 	    "    CAST(stu_id AS INT) AS stu_id, "
-	    "    CAST((RANDOM() * 5e6) AS INT) AS major_id, "
+	    "    CAST((RANDOM() * 5e6 / 2) AS INT) AS major_id, "
 	    "    CAST((RANDOM() * 100) AS TINYINT) AS age "
-	    "FROM generate_series(1,  CAST(5e7 AS INT)) vals(stu_id);");
+	    "FROM generate_series(1,  CAST(5e7 / 2 AS INT)) vals(stu_id);");
+
+	con.Query(
+	    "INSERT INTO student "
+	    "SELECT "
+	    "    CAST(stu_id AS INT) AS stu_id, "
+	    "    CAST((RANDOM() * 5e6 / 2 + 5e6 / 2) AS INT) AS major_id, "
+	    "    CAST((RANDOM() * 100) AS TINYINT) AS age "
+	    "FROM generate_series(CAST(5e7 / 2 AS INT),  CAST(5e7 AS INT)) vals(stu_id);");
 
 	std::string a_long_string = "";
 	for (size_t i = 0; i < 256; i++) {
 		a_long_string += "abcd";
 	}
 
+	// Table: department
 	con.Query(
 	    "CREATE OR REPLACE TABLE department AS "
 	    "SELECT "
 	    "    CAST(major_id * 8 % 5e6 AS INT) AS major_id, "
+	    "	'major_' || (major_id) AS name, "
+	    "FROM generate_series(1,  CAST(5e6 / 2 AS INT)) vals(major_id);");
+
+	con.Query(
+	    "INSERT INTO department "
+	    "SELECT "
+	    "	CAST(major_id % 5e6 AS INT) AS major_id, "
 	    "	'major_" +
 	    a_long_string +
 	    "' || (major_id) AS name, "
-	    "FROM generate_series(1,  CAST(5e6 AS INT)) vals(major_id);");
+	    "FROM generate_series(CAST(5e6 / 2 AS INT), CAST(5e6 AS INT)) vals(major_id);");
 
+	// Table room
 	con.Query(
 	    "CREATE OR REPLACE TABLE room AS "
 	    "SELECT "
 	    "	 room_id AS room_id, "
 	    "    CAST(room_id * 8 % 5e7 AS INT) AS stu_id, "
 	    "    CAST((RANDOM() * 5e6) AS INT) AS type "
-	    "FROM generate_series(1,  CAST(5e7 AS INT)) vals(room_id);");
+	    "FROM generate_series(1,  CAST(5e7 / 2 AS INT)) vals(room_id);");
+
+	con.Query(
+	    "INSERT INTO room "
+	    "SELECT "
+	    "	 room_id AS room_id, "
+	    "    CAST(room_id % 5e7 AS INT) AS stu_id, "
+	    "    CAST((RANDOM() * 5e6) AS INT) AS type "
+	    "FROM generate_series(CAST(5e7 / 2 AS INT),  CAST(5e7 AS INT)) vals(room_id);");
 
 	con.Query(
 	    "CREATE OR REPLACE TABLE type AS "
