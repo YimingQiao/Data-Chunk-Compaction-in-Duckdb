@@ -130,25 +130,28 @@ void GenerateTables(duckdb::Connection &con) {
 	    "    CAST((RANDOM() * 100) AS TINYINT) AS age "
 	    "FROM generate_series(CAST(5e7 / 2 AS INT),  CAST(5e7 AS INT)) vals(stu_id);");
 
-	std::string a_long_string = "";
-	for (size_t i = 0; i < 256; i++) {
-		a_long_string += "abcd";
-	}
+	std::string str_1, str_2;
+	for (size_t i = 0; i < 0; i++)
+		str_1 += "abcd";
+	for (size_t i = 0; i < 512; i++)
+		str_2 += "abcd";
 
 	// Table: department
 	con.Query(
 	    "CREATE OR REPLACE TABLE department AS "
 	    "SELECT "
 	    "    CAST(major_id * 8 % 5e6 AS INT) AS major_id, "
-	    "	'major_' || (major_id) AS name, "
+	    "	'_" +
+	    str_1 +
+	    "' || (major_id) AS name, "
 	    "FROM generate_series(1,  CAST(5e6 / 2 AS INT)) vals(major_id);");
 
 	con.Query(
 	    "INSERT INTO department "
 	    "SELECT "
 	    "	CAST(major_id % 5e6 AS INT) AS major_id, "
-	    "	'major_" +
-	    a_long_string +
+	    "	'_" +
+	    str_2 +
 	    "' || (major_id) AS name, "
 	    "FROM generate_series(CAST(5e6 / 2 AS INT), CAST(5e6 AS INT)) vals(major_id);");
 
@@ -169,6 +172,7 @@ void GenerateTables(duckdb::Connection &con) {
 	    "    CAST((RANDOM() * 5e6) AS INT) AS type "
 	    "FROM generate_series(CAST(5e7 / 2 AS INT),  CAST(5e7 AS INT)) vals(room_id);");
 
+	// Table type
 	con.Query(
 	    "CREATE OR REPLACE TABLE type AS "
 	    "SELECT "

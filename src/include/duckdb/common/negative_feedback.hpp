@@ -8,7 +8,9 @@
 
 #pragma once
 
-#include <math.h>
+#include <cmath>
+#include <filesystem>
+#include <random>
 
 #include "duckdb/common/chrono.hpp"
 #include "duckdb/common/helper.hpp"
@@ -19,18 +21,27 @@ namespace duckdb {
 class MultiArmedBandit {
 public:
 	MultiArmedBandit(size_t n_arms, const std::vector<double> &means)
-	    : n_arms_(n_arms), est_means_(means), n_select_(n_arms, 0), n_update_(n_arms, 0), times_(0) {
+	    : n_arms_(n_arms),
+	      est_rewards_(means),
+	      est_square_rewards_(n_arms, 0),
+	      n_select_(n_arms, 0),
+	      n_update_(n_arms, 0),
+	      select_times_(0),
+	      update_times_(0),
+	      dis_update_(0),
+	      dis_n_update_(n_arms, 0) {
 	}
 
 	// Selects an arm based on the UCB1 algorithm
 	inline size_t SelectArm() {
 		std::lock_guard<std::mutex> lock(mutex_);
+		Logging();
 
-		if (times_ < n_arms_ * 8) {
+		if (select_times_ < n_arms_ * 8) {
 			// initialize experimental means by pulling each arm once
-			size_t arm = times_ % n_arms_;
+			size_t arm = select_times_ % n_arms_;
 
-			times_++;
+			select_times_++;
 			n_select_[arm]++;
 			return arm;
 		}
@@ -39,14 +50,15 @@ public:
 		double max_value = -1;
 		size_t max_arm = 0;
 		for (size_t i = 0; i < n_arms_; i++) {
-			double value = est_means_[i] + UpperConfidenceBound(i);
+			// double value = est_rewards_[i] + UpperConfidenceBound(i);
+			double value = est_rewards_[i] + UCBTuned(i);
 
 			if (value > max_value) {
 				max_value = value;
 				max_arm = i;
 			}
 		}
-		times_++;
+		select_times_++;
 		n_select_[max_arm]++;
 		return max_arm;
 	}
@@ -54,32 +66,95 @@ public:
 	// Updates the arm with the given weight
 	inline void UpdateArm(size_t arm, double reward) {
 		std::lock_guard<std::mutex> lock(mutex_);
-		size_t update_factor = std::min(n_update_[arm], size_t(16));
+
+		// update discount rewards
+		size_t update_factor = std::min(n_update_[arm], size_t(7));
 		double ratio = update_factor / (update_factor + 1.0);
-		est_means_[arm] = est_means_[arm] * ratio + reward * (1 - ratio);
+		est_rewards_[arm] = est_rewards_[arm] * ratio + reward * (1 - ratio);
+		est_square_rewards_[arm] = est_square_rewards_[arm] * ratio + reward * reward * (1 - ratio);
 		n_update_[arm]++;
+		update_times_++;
+
+		// update discount times
+		dis_update_ = dis_update_ * kFactor + 1;
+		for (size_t i = 0; i < n_arms_; ++i)
+			dis_n_update_[i] *= kFactor;
+		dis_n_update_[arm] += 1;
 	}
 
 	inline void Print(const std::vector<size_t> &values) {
-		for (size_t i = 0; i < est_means_.size(); i++) {
-			std::cerr << " [PARAMETERS] Estimated mean for arm " << values[i] << " is " << to_string(est_means_[i])
+		for (size_t i = 0; i < est_rewards_.size(); i++) {
+			std::cerr << " [PARAMETERS] Estimated reward for arm " << values[i] << " is " << to_string(est_rewards_[i])
 			          << " - Sampling times is " << n_select_[i] << "\n";
 		}
 	}
 
+	inline void Log2Csv(std::string addr) {
+		std::ofstream file(addr);
+
+		// Check if file is open
+		if (!file.is_open()) {
+			throw std::runtime_error("Unable to open file");
+		}
+
+		// Iterating over history to write each record
+		for (size_t i = 0; i < history_.size(); ++i) {
+			const auto &record = history_[i];
+			file << i * kHeart << ", ";
+			for (size_t j = 0; j < record.his_rewards_.size(); ++j)
+				file << record.his_rewards_[j] << ", ";
+
+			for (size_t j = 0; j < record.his_select_.size(); ++j)
+				file << record.his_select_[j] << ", ";
+			file << "\n";
+		}
+
+		file.close();
+	}
+
 private:
 	inline double UpperConfidenceBound(size_t arm) {
-		return sqrt(2 * log(times_) / (n_select_[arm] + 1));
+		return sqrt(2 * log(select_times_) / (n_select_[arm] + 1));
+	}
+
+	inline double UCBTuned(size_t arm) {
+		double ucb_var = est_square_rewards_[arm] - est_rewards_[arm] * est_rewards_[arm] +
+		                 sqrt(2 * log(dis_update_) / (dis_n_update_[arm] + kEpsilon));
+		return sqrt(log(dis_update_) / (dis_n_update_[arm] + kEpsilon) * std::min(0.25, ucb_var));
+	}
+
+	inline void Logging() {
+		if (select_times_ % kHeart == 0) history_.push_back(Record(est_rewards_, n_select_));
 	}
 
 	std::mutex mutex_;
 
+	// stats
 	size_t n_arms_;
-	std::vector<double> est_means_;
-	// select times and update times should be recorded separately, because we are multithreaded.
 	std::vector<size_t> n_select_;
 	std::vector<size_t> n_update_;
-	size_t times_;
+	size_t update_times_;
+	size_t select_times_;
+
+	// UCB
+	std::vector<double> est_rewards_;
+	std::vector<double> est_square_rewards_;
+
+	double kFactor = 0.99;
+	double kEpsilon = 0.001;
+	size_t dis_update_;
+	std::vector<size_t> dis_n_update_;
+
+	// logging
+	size_t kHeart = 256;
+	struct Record {
+		std::vector<double> his_rewards_;
+		std::vector<size_t> his_select_;
+
+		Record(const std::vector<double> &rewards, const std::vector<size_t> selects)
+		    : his_rewards_(rewards), his_select_(selects) {};
+	};
+	std::vector<Record> history_;
 };
 
 class CompactTuner {
@@ -115,21 +190,28 @@ public:
 	}
 
 	inline void Reset() {
-		// output the parameters
-		std::cerr << "-------\n";
-		for (auto &pair : package_index_) {
-			auto &addr = pair.first;
-			auto &id = pair.second;
+		if (!bandit_packages_.empty()) {
+			// output the parameters
+			std::cerr << "-------\n";
 
-			auto &bandit = bandit_packages_[id].bandit;
-			auto &value = bandit_packages_[id].value;
+			std::string folder_name = "./bandit_log_0x" + std::to_string(RandomInteger());
+			std::filesystem::create_directories(folder_name);
+			for (auto &pair : package_index_) {
+				auto &addr = pair.first;
+				auto &id = pair.second;
 
-			std::cerr << " [PARAMETERS] Compaction Address - 0x" << addr << "\tId - " << id << "\n";
-			bandit->Print(value);
+				auto &bandit = bandit_packages_[id].bandit;
+				auto &value = bandit_packages_[id].value;
+
+				std::string bandit_name = "0x" + std::to_string(addr) + "\tId-" + std::to_string(id);
+				std::cerr << " [PARAMETERS] Compaction Address - " << bandit_name << "\n";
+				bandit->Log2Csv("./" + folder_name + "/" + bandit_name + ".log");
+				bandit->Print(value);
+			}
+
+			package_index_.clear();
+			bandit_packages_.clear();
 		}
-
-		package_index_.clear();
-		bandit_packages_.clear();
 	}
 
 	inline int64_t GetId(size_t address) {
@@ -146,6 +228,10 @@ public:
 	}
 
 private:
+	inline size_t RandomInteger() {
+		return integers(gen_);
+	}
+
 	struct BanditPackage {
 		std::unique_ptr<MultiArmedBandit> bandit;
 		std::vector<size_t> value;
@@ -162,5 +248,9 @@ private:
 
 	std::unordered_map<size_t, idx_t> package_index_;
 	std::vector<BanditPackage> bandit_packages_;
+
+	// random
+	std::mt19937 gen_;
+	std::uniform_int_distribution<int> integers;
 };
 }  // namespace duckdb

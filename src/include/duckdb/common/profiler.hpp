@@ -8,8 +8,10 @@
 
 #pragma once
 
+#include <filesystem>
 #include <fstream>
 #include <iostream>
+#include <random>
 
 #include "duckdb/common/chrono.hpp"
 #include "duckdb/common/helper.hpp"
@@ -272,8 +274,10 @@ public:
 	}
 
 	// output to csv file, each hist has a file.
-	inline void ToCSV() const {
+	inline void ToCSV() {
 		if (kEnableProfiling) {
+			std::string folder_name = "./zebra_log_0x" + std::to_string(RandomInteger());
+			std::filesystem::create_directories(folder_name);
 			for (auto &pair : hists_) {
 				const auto &name = pair.first;
 				const auto &hist = pair.second;
@@ -283,7 +287,7 @@ public:
 					continue;
 				}
 
-				string file_name = name + ".csv";
+				string file_name = folder_name + "/" + name + ".csv";
 				std::ofstream out(file_name);
 				out << "key, value, cnt\n";
 				for (size_t i = 1; i <= STANDARD_VECTOR_SIZE; ++i) {
@@ -300,6 +304,10 @@ public:
 	}
 
 private:
+	inline size_t RandomInteger() {
+		return integers(gen_);
+	}
+
 	struct Histogram {
 		vector<atomic<size_t>> values_;  // in ns
 		vector<atomic<size_t>> cnt_;
@@ -310,5 +318,9 @@ private:
 
 	mutex mutex_;
 	unordered_map<string, Histogram> hists_;
+
+	// random
+	std::mt19937 gen_;
+	std::uniform_int_distribution<int> integers;
 };
 }  // namespace duckdb
