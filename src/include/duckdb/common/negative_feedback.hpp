@@ -21,26 +21,25 @@ namespace duckdb {
 class MultiArmedBandit {
 public:
 	MultiArmedBandit(size_t n_arms, const std::vector<double> &means)
-	    : n_arms_(n_arms),
+	    : kArms_(n_arms),
 	      est_rewards_(means),
 	      est_square_rewards_(n_arms, 0),
 	      n_select_(n_arms, 0),
-	      n_update_(n_arms, 0),
 	      select_times_(0),
-	      update_times_(0),
-	      dis_update_(0),
-	      dis_n_update_(n_arms, 0) {
+	      stage_update_times_(0),
+	      stage_n_update_(n_arms, 0),
+	      n_start_sampling_(0) {
 	}
 
 	// Selects an arm based on the UCB1 algorithm
 	inline size_t SelectArm() {
 		std::lock_guard<std::mutex> lock(mutex_);
-		Logging();
 
-		if (select_times_ < n_arms_ * 8) {
+		if (n_start_sampling_ < kArms_ * kStartSampling) {
 			// initialize experimental means by pulling each arm once
-			size_t arm = select_times_ % n_arms_;
+			size_t arm = n_start_sampling_ % kArms_;
 
+			n_start_sampling_++;
 			select_times_++;
 			n_select_[arm]++;
 			return arm;
@@ -49,8 +48,7 @@ public:
 		// select the arm with the highest estimated_mean + UCB value
 		double max_value = -1;
 		size_t max_arm = 0;
-		for (size_t i = 0; i < n_arms_; i++) {
-			// double value = est_rewards_[i] + UpperConfidenceBound(i);
+		for (size_t i = 0; i < kArms_; i++) {
 			double value = est_rewards_[i] + UCBTuned(i);
 
 			if (value > max_value) {
@@ -67,19 +65,29 @@ public:
 	inline void UpdateArm(size_t arm, double reward) {
 		std::lock_guard<std::mutex> lock(mutex_);
 
-		// update discount rewards
-		size_t update_factor = std::min(n_update_[arm], size_t(7));
+		if (select_times_ % kHeart == 0 && n_start_sampling_ >= kArms_ * kStartSampling) {
+			history_.emplace_back(est_rewards_, n_select_);
+
+			if (r_means_.empty()) r_means_ = est_rewards_;
+			bool detected = est_rewards_[arm] > r_means_[arm] * 2 || est_rewards_[arm] < r_means_[arm] / 2;
+			r_means_ = est_rewards_;
+			if (detected) {
+				n_start_sampling_ = 0;
+				std::fill_n(est_rewards_.begin(), kArms_, 0);
+				std::fill_n(est_square_rewards_.begin(), kArms_, 0);
+
+				stage_update_times_ = 0;
+				std::fill_n(stage_n_update_.begin(), kArms_, 0);
+			}
+		}
+
+		// update rewards
+		size_t update_factor = std::min(stage_n_update_[arm], size_t(15));
 		double ratio = update_factor / (update_factor + 1.0);
 		est_rewards_[arm] = est_rewards_[arm] * ratio + reward * (1 - ratio);
 		est_square_rewards_[arm] = est_square_rewards_[arm] * ratio + reward * reward * (1 - ratio);
-		n_update_[arm]++;
-		update_times_++;
-
-		// update discount times
-		dis_update_ = dis_update_ * kFactor + 1;
-		for (size_t i = 0; i < n_arms_; ++i)
-			dis_n_update_[i] *= kFactor;
-		dis_n_update_[arm] += 1;
+		stage_update_times_++;
+		stage_n_update_[arm]++;
 	}
 
 	inline void Print(const std::vector<size_t> &values) {
@@ -113,38 +121,36 @@ public:
 	}
 
 private:
-	inline double UpperConfidenceBound(size_t arm) {
-		return sqrt(2 * log(select_times_) / (n_select_[arm] + 1));
-	}
-
 	inline double UCBTuned(size_t arm) {
 		double ucb_var = est_square_rewards_[arm] - est_rewards_[arm] * est_rewards_[arm] +
-		                 sqrt(2 * log(dis_update_) / (dis_n_update_[arm] + kEpsilon));
-		return sqrt(log(dis_update_) / (dis_n_update_[arm] + kEpsilon) * std::min(0.25, ucb_var));
+		                 sqrt(2 * log(stage_update_times_) / (stage_n_update_[arm] + kEpsilon));
+		return sqrt(log(stage_update_times_) / (stage_n_update_[arm] + kEpsilon) * std::min(0.25, ucb_var));
 	}
 
-	inline void Logging() {
-		if (select_times_ % kHeart == 0) history_.push_back(Record(est_rewards_, n_select_));
-	}
+private:
+	// init
+	size_t kArms_;
+	double kEpsilon = 0.1;
+	size_t kStartSampling = 4;
 
-	std::mutex mutex_;
-
+private:
 	// stats
-	size_t n_arms_;
-	std::vector<size_t> n_select_;
-	std::vector<size_t> n_update_;
-	size_t update_times_;
 	size_t select_times_;
+	std::vector<size_t> n_select_;
 
-	// UCB
+private:
+	// UCB-tuned
+	std::mutex mutex_;
 	std::vector<double> est_rewards_;
 	std::vector<double> est_square_rewards_;
+	size_t stage_update_times_;
+	std::vector<size_t> stage_n_update_;
 
-	double kFactor = 0.99;
-	double kEpsilon = 0.001;
-	size_t dis_update_;
-	std::vector<size_t> dis_n_update_;
+	// restart
+	size_t n_start_sampling_ = 0;
+	std::vector<double> r_means_;
 
+private:
 	// logging
 	size_t kHeart = 256;
 	struct Record {
