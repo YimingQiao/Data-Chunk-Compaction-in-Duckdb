@@ -8,7 +8,7 @@ project(imdb CXX)
 
 include_directories(include)
 
-set(CMAKE_BUILD_TYPE "Debug")
+set(CMAKE_BUILD_TYPE "Release")
 add_library(imdb SHARED imdb.cpp ${ALL_OBJECT_FILES})
 
 disable_target_warnings(imdb)
