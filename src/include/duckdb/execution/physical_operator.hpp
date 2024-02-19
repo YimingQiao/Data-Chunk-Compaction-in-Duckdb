@@ -220,7 +220,7 @@ public:
 //! inherit their state class from the CompactingOperatorState.
 class CompactingPhysicalOperator : public PhysicalOperator {
 public:
-	idx_t compact_threshold = 512;
+	idx_t compact_threshold = 32;
 	CompactingPhysicalOperator(PhysicalOperatorType type, vector<LogicalType> types, idx_t estimated_cardinality);
 
 	bool compacting_supported;
