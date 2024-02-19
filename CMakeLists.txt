@@ -1129,19 +1129,5 @@ endif ()
 add_executable(imdb_job imdb_main.cpp)
 target_link_libraries(imdb_job imdb duckdb)
 
-# Create a simple student-domoritory database to test the parallel execution of bushy plan.
-add_executable(bushy_plan bushy_main.cpp)
-target_link_libraries(bushy_plan duckdb)
-
-# Use the same student-dormoritory database to test the very long probing pipeline performance
-add_executable(the_longer_the_better the_longer_the_better.cpp)
-target_link_libraries(the_longer_the_better duckdb)
-
-add_executable(bushy_asof bushy_asof.cpp)
-target_link_libraries(bushy_asof duckdb)
-
-add_executable(bushy_simd bushy_simd.cpp)
-target_link_libraries(bushy_simd duckdb)
-
-add_executable(join_scalability join_scalability.cpp)
-target_link_libraries(join_scalability duckdb)
+add_executable(vector_compaction vector_compaction.cpp)
+target_link_libraries(vector_compaction duckdb)

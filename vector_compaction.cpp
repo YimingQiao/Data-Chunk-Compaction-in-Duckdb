@@ -74,20 +74,13 @@ int main() {
 			scheduler.SetThreadSetting(4, VecStr {"SEQ_SCAN ", "READ_PARQUET "}, VecStr {"HASH_JOIN"}, false);
 			scheduler.SetThreadSetting(8, VecStr {"HT_FINALIZE"}, VecStr {"HT_FINALIZE"}, false);
 			// Probe Hash Table
-			scheduler.SetThreadSetting(1, VecStr {"SEQ_SCAN ", "READ_PARQUET "}, VecStr {"EXPLAIN_ANALYZE"}, true);
+			scheduler.SetThreadSetting(4, VecStr {"SEQ_SCAN ", "READ_PARQUET "}, VecStr {"EXPLAIN_ANALYZE"}, true);
 		}
 		// [BREAKER]
 		{
 			scheduler.SetThreadSetting(8, VecStr {"BREAKER"}, VecStr {""});
 			scheduler.SetThreadSetting(4, VecStr {"SEQ_SCAN ", "READ_PARQUET "}, VecStr {"BREAKER"});
-			scheduler.SetThreadSetting(4, VecStr {"SEQ_SCAN ", "READ_PARQUET "}, VecStr {"HASH_JOIN"}, true);
-		}
-		// [Sort-Merge Join]
-		{
-			scheduler.SetThreadSetting(32, VecStr {"PIECEWISE_MERGE_JOIN"}, VecStr {""}, false);
-			scheduler.SetThreadSetting(32, VecStr {""}, VecStr {"PIECEWISE_MERGE_JOIN"}, true);
-			scheduler.SetThreadSetting(32, VecStr {""}, VecStr {"PIECEWISE_MERGE_JOIN"}, false);
-			scheduler.SetThreadSetting(32, VecStr {"RANGE_JOIN_MERGE"}, VecStr {"RANGE_JOIN_MERGE"}, false);
+			scheduler.SetThreadSetting(1, VecStr {"SEQ_SCAN ", "READ_PARQUET "}, VecStr {"HASH_JOIN"}, true);
 		}
 	}
 
@@ -103,12 +96,12 @@ int main() {
 		// ExecuteQuery(con, bushy_query, 2, 1);
 
 		// enable auto-tuning
-		scheduler.SetThreadSetting(1, "CompactTuner", "CompactTuner");
-		ExecuteQuery(con, query, 6, 4);
+		// scheduler.SetThreadSetting(1, "CompactTuner", "CompactTuner");
+		// ExecuteQuery(con, query, 6, 4);
 
 		// disable auto-tuning
 		scheduler.SetThreadSetting(0, "CompactTuner", "CompactTuner");
-		ExecuteQuery(con, query, 6, 4);  // 5 times, show 4 times because the first time is warm-up
+		ExecuteQuery(con, query, 2, 1);  // 5 times, show 4 times because the first time is warm-up
 	}
 }
 
@@ -148,7 +141,7 @@ void GenerateTables(duckdb::Connection &con) {
 	con.Query(
 	    "CREATE OR REPLACE TABLE department AS "
 	    "SELECT "
-	    "    CAST(major_id * 8 % 5e6 AS INT) AS major_id, "
+	    "    CAST(major_id % 5e6 AS INT) AS major_id, "
 	    "	'_" +
 	    str_1 +
 	    "' || (major_id) AS name, "
@@ -166,7 +159,7 @@ void GenerateTables(duckdb::Connection &con) {
 	con.Query(
 	    "INSERT INTO department "
 	    "SELECT "
-	    "	CAST(major_id * 8 % 5e6 AS INT) AS major_id, "
+	    "	CAST(major_id % 5e6 AS INT) AS major_id, "
 	    "	'_" +
 	    str_1 +
 	    "' || (major_id) AS name, "
@@ -177,7 +170,7 @@ void GenerateTables(duckdb::Connection &con) {
 	    "CREATE OR REPLACE TABLE room AS "
 	    "SELECT "
 	    "	 room_id AS room_id, "
-	    "    CAST(room_id * 8 % 5e7 AS INT) AS stu_id, "
+	    "    CAST(room_id % 5e7 AS INT) AS stu_id, "
 	    "    CAST((RANDOM() * 5e6) AS INT) AS type "
 	    "FROM generate_series(1,  CAST(5e7 / 3 AS INT)) vals(room_id);");
 
@@ -193,7 +186,7 @@ void GenerateTables(duckdb::Connection &con) {
 	    "INSERT INTO room "
 	    "SELECT "
 	    "	 room_id AS room_id, "
-	    "    CAST(room_id * 8 % 5e7 AS INT) AS stu_id, "
+	    "    CAST(room_id % 5e7 AS INT) AS stu_id, "
 	    "    CAST((RANDOM() * 5e6) AS INT) AS type "
 	    "FROM generate_series(CAST(2 * 5e7 / 3 AS INT),  CAST(5e7 AS INT)) vals(room_id);");
 

@@ -251,9 +251,9 @@ OperatorResultType CompactingPhysicalOperator::Execute(ExecutionContext &context
                                                        GlobalOperatorState &gstate, OperatorState &state_p) const {
 	auto &state = state_p.Cast<CachingOperatorState>();
 
+	string address = to_string(size_t(this));
 	Profiler profiler_exec;
 	profiler_exec.Start();
-	string address = to_string(size_t(this));
 
 	// Execute child operator
 	auto child_result = ExecuteInternal(context, input, chunk, gstate, state);
@@ -296,6 +296,9 @@ OperatorResultType CompactingPhysicalOperator::Execute(ExecutionContext &context
 		if (state.cached_chunk->size() >= (STANDARD_VECTOR_SIZE - compact_threshold) ||
 		    child_result == OperatorResultType::FINISHED) {
 			// chunk cache full: return it
+			//			chunk.Reset();
+			//			state.cached_chunk->Copy(chunk);
+			//			state.cached_chunk->Reset();
 			chunk.Move(*state.cached_chunk);
 			state.cached_chunk->Initialize(Allocator::Get(context.client), chunk.GetTypes());
 
