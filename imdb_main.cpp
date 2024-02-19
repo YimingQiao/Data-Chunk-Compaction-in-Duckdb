@@ -1,5 +1,6 @@
 #include <iostream>
 
+#include "duckdb.hpp"
 #include "duckdb/common/box_renderer.hpp"
 #include "third_party/imdb/include/imdb.hpp"
 
@@ -12,6 +13,7 @@ public:
 			imdb::dbgen(db);
 			std::cout << "Database imported.\n";
 		}
+		std::cout << "Database Loaded.\n";
 	}
 
 	std::unique_ptr<duckdb::MaterializedQueryResult> Query(const std::string &query, double *time, bool print = true) {
