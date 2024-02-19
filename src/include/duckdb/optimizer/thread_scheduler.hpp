@@ -60,7 +60,7 @@ public:
 		}
 
 		// not found!
-		return 0;
+		return 64;
 	}
 
 	void PrintThreadSetting() {
