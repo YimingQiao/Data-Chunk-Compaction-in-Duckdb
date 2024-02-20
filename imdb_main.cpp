@@ -4,9 +4,9 @@
 #include "duckdb/common/box_renderer.hpp"
 #include "third_party/imdb/include/imdb.hpp"
 
-class IMDB {
+class IMDBDatabase {
 public:
-	explicit IMDB(duckdb::DuckDB db) : connection_(db), client_(db.instance), config_() {
+	explicit IMDBDatabase(duckdb::DuckDB db) : connection_(db), client_(db.instance), config_() {
 		auto result = Query("SHOW TABLES", nullptr, false);
 		if (result->RowCount() == 0) {
 			std::cout << "Database is empty, importing data...\n";
@@ -18,13 +18,9 @@ public:
 
 	std::unique_ptr<duckdb::MaterializedQueryResult> Query(const std::string &query, double *time, bool print = true) {
 		// Measure the time.
-		auto start = std::chrono::high_resolution_clock::now();
+		profiler_.Start();
 		auto result = connection_.Query(query);
-		auto end = std::chrono::high_resolution_clock::now();
-		if (time != nullptr) {
-			// time is measured in second.
-			*time = std::chrono::duration_cast<std::chrono::duration<double>>(end - start).count();
-		}
+		if (time != nullptr) *time = profiler_.Elapsed();
 
 		if (!result->HasError()) {
 			if (print) {
@@ -45,6 +41,8 @@ private:
 	duckdb::ClientContext client_;
 	duckdb::BoxRendererConfig config_;
 
+	duckdb::Profiler profiler_;
+
 	std::string ExplainQuery(const std::string &query) {
 		auto result = connection_.Query("EXPLAIN ANALYZE " + query);
 		std::string plan = result->GetValue(1, 0).ToString();
@@ -53,16 +51,16 @@ private:
 	}
 };
 
-void IMDBFinder(IMDB &imdb);
+void IMDBFinder(IMDBDatabase &imdb);
 
 int main() {
 	std::string db_name = "third_party/imdb/data/imdb.db";
 	// nullptr means in-memory database.
 	duckdb::DuckDB db(db_name);
-	IMDB imdb(db);
+	IMDBDatabase imdb(db);
 
 	imdb.Query("SET threads TO 64;", nullptr, false);
-	std::vector<size_t> query_id = {21};
+	std::vector<size_t> query_id = {1};
 	double time;
 	for (auto id : query_id) {
 		std::string query = imdb::get_query(id);
@@ -73,7 +71,7 @@ int main() {
 	return 0;
 }
 
-void IMDBFinder(IMDB &imdb) {  // Number of Queries
+void IMDBFinder(IMDBDatabase &imdb) {  // Number of Queries
 	int num_queries = 114;
 
 	std::vector<uint32_t> interesting_queries;
