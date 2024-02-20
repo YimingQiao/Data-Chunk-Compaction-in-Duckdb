@@ -81,6 +81,7 @@ public:
 		}
 		string address = to_string(size_t(&hash_table)) + " - " + to_string(size_t(&op));
 		ht_name = conditions_str + " - " + address;
+		join_probe_name = "[HashJoin - (3) Probe Table - " + ht_name + "]";
 	}
 
 	void ScheduleFinalize(Pipeline &pipeline, Event &event);
@@ -92,6 +93,7 @@ public:
 	unique_ptr<JoinHashTable> hash_table;
 	//! yiqiao: hash table name
 	string ht_name;
+	string join_probe_name;
 	//! The perfect hash join executor (if any)
 	unique_ptr<PerfectHashJoinExecutor> perfect_join_executor;
 	//! Whether or not the hash table has been finalized
@@ -326,8 +328,8 @@ public:
 		auto now = std::chrono::system_clock::now();
 		auto duration = now.time_since_epoch();
 		auto milliseconds = std::chrono::duration_cast<std::chrono::milliseconds>(duration).count() % 1000000;
-		std::cerr << " [Open] Building Hash Table\t #task/#thread: " + std::to_string(num_threads) + "/" +
-		                 std::to_string(active_threads) + "\tTick: " + std::to_string(milliseconds) + "ms\n";
+		//		std::cerr << " [Open] Building Hash Table\t #task/#thread: " + std::to_string(num_threads) + "/" +
+		//		                 std::to_string(active_threads) + "\tTick: " + std::to_string(milliseconds) + "ms\n";
 
 		if (num_threads == 1 || (ht.Count() < PARALLEL_CONSTRUCT_THRESHOLD && !context.config.verify_parallelism)) {
 			// Single-threaded finalize
@@ -546,7 +548,7 @@ OperatorResultType PhysicalHashJoin::ExecuteInternal(ExecutionContext &context, 
 	D_ASSERT(!sink.scanned_data);
 
 	// get name of this hash join
-	string name = "[HashJoin - (3) Probe Table - " + sink.ht_name + "]";
+	string &name = sink.join_probe_name;
 	Profiler profiler;
 	profiler.Start();
 
@@ -573,6 +575,8 @@ OperatorResultType PhysicalHashJoin::ExecuteInternal(ExecutionContext &context, 
 	if (state.scan_structure) {
 		// still have elements remaining (i.e. we got >STANDARD_VECTOR_SIZE elements in the previous probe)
 		state.scan_structure->Next(state.join_keys, input, chunk);
+		HashJoinProfiler::Get().OutputChunk(chunk.size(), name);
+
 		if (chunk.size() > 0) {
 			BeeProfiler::Get().InsertStatRecord(name + " - Have Remaining Elements #Tuple", chunk.size());
 			BeeProfiler::Get().InsertStatRecord(name + " - Have Remaining Elements", profiler.Elapsed());
@@ -602,8 +606,10 @@ OperatorResultType PhysicalHashJoin::ExecuteInternal(ExecutionContext &context, 
 		                                                      *sink.probe_spill, state.spill_state, state.spill_chunk);
 	} else {
 		state.scan_structure = sink.hash_table->Probe(state.join_keys, state.join_key_state);
+		HashJoinProfiler::Get().InputChunk(input.size(), name);
 	}
 	state.scan_structure->Next(state.join_keys, input, chunk);
+	HashJoinProfiler::Get().OutputChunk(chunk.size(), name);
 
 	BeeProfiler::Get().InsertStatRecord(name + " #Tuple", chunk.size());
 	BeeProfiler::Get().InsertStatRecord(name, profiler.Elapsed());

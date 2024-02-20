@@ -12,6 +12,7 @@
 #include <fstream>
 #include <iostream>
 #include <random>
+#include <utility>
 
 #include "duckdb/common/chrono.hpp"
 #include "duckdb/common/helper.hpp"
@@ -322,5 +323,90 @@ private:
 	// random
 	std::mt19937 gen_;
 	std::uniform_int_distribution<int> integers;
+};
+
+// This profiler is to compute the chunk factor of each hash join operator
+class HashJoinProfiler {
+public:
+	const static bool kEnableProfiling = true;
+
+public:
+	static HashJoinProfiler &Get() {
+		static HashJoinProfiler instance;
+		return instance;
+	}
+
+	void InputChunk(size_t n_tuple, const string &join_addr) {
+		if (!kEnableProfiling) return;
+		if (n_tuple == 0) return;
+
+		auto &info = GetJoinInfo(join_addr);
+		++info.n_input_chunk;
+		++info.dist_input_size[n_tuple - 1];
+	}
+
+	void OutputChunk(size_t n_tuple, const string &join_addr) {
+		if (!kEnableProfiling) return;
+		if (n_tuple == 0) return;
+
+		auto &info = GetJoinInfo(join_addr);
+		++info.n_output_chunk;
+		++info.dist_output_size[n_tuple - 1];
+	}
+
+	void PrintProfile() {
+		for (const auto &pair : joins_) {
+			const auto &join_name = pair.first;
+			const auto &info = pair.second;
+
+			uint64_t avg_input_tuple = 0, total_input = 0;
+			uint64_t avg_output_tuple = 0, total_output = 0;
+			for (size_t i = 0; i < STANDARD_VECTOR_SIZE; ++i) {
+				total_input += (i + 1) * info.dist_input_size[i];
+				total_output += (i + 1) * info.dist_output_size[i];
+			}
+			avg_input_tuple = total_input / info.n_input_chunk;
+			avg_output_tuple = total_output / info.n_output_chunk;
+
+			double chunk_factor = avg_input_tuple / double(avg_output_tuple);
+
+			std::cerr << join_name << "\tChunk Factor: " << chunk_factor << "\n";
+			std::cerr << "\tInput -- "
+			          << "#Tuple: " << total_input << "\t"
+			          << "#Chunk: " << info.n_input_chunk << "\t"
+			          << "Avg Size: " << avg_input_tuple << "\n";
+			std::cerr << "\tOutput -- "
+			          << "#Tuple: " << total_output << "\t"
+			          << "#Chunk: " << info.n_output_chunk << "\t"
+			          << "Avg Size: " << avg_output_tuple << "\n";
+		}
+	}
+
+	void Clear() {
+		joins_.clear();
+	}
+
+private:
+	struct VectorizedJoinInfo {
+		uint64_t n_input_chunk;
+		uint64_t n_output_chunk;
+		vector<uint64_t> dist_input_size;
+		vector<uint64_t> dist_output_size;
+
+		VectorizedJoinInfo()
+		    : n_input_chunk(0),
+		      n_output_chunk(0),
+		      dist_input_size(STANDARD_VECTOR_SIZE, 0),
+		      dist_output_size(STANDARD_VECTOR_SIZE, 0) {
+		}
+	};
+
+	VectorizedJoinInfo &GetJoinInfo(const string &address) {
+		lock_guard<mutex> lock(mtx_);
+		return joins_[address];
+	}
+
+	unordered_map<string, VectorizedJoinInfo> joins_;
+	std::mutex mtx_;
 };
 }  // namespace duckdb

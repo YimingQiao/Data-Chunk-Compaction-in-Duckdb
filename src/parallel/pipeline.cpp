@@ -137,29 +137,30 @@ bool Pipeline::ScheduleParallel(shared_ptr<Event> &event) {
 	    ThreadScheduler::Get().GetThreadSetting(source->GetName(), sink->GetName(), !operators.empty());
 	idx_t max_threads = thread_setting ? thread_setting : source_state->MaxThreads();
 
-	if (sink->GetName() != "BATCH_CREATE_TABLE_AS") {
-		size_t active_threads = TaskScheduler::GetScheduler(executor.context).NumberOfThreads();
-		auto now = std::chrono::system_clock::now();
-		auto duration = now.time_since_epoch();
-		auto milliseconds = std::chrono::duration_cast<std::chrono::milliseconds>(duration).count() % 1000000;
-
-		std::string source_name = source->GetName();
-		if (source_name == "SEQ_SCAN ") {
-			string details = source->ParamsToString();
-			idx_t pos = details.find('\n');
-			source_name += "(" + details.substr(0, pos) + ")";
-		}
-		if (source_name == "IE_JOIN" || source_name == "ASOF_JOIN") {
-			std::cerr << " [Open] " + source_name + " --> " + sink->GetName() +
-			                 "\t #task/#thread: " + std::to_string(max_threads) + "/" + std::to_string(active_threads) +
-			                 "\tTick: " + std::to_string(milliseconds) + "ms, having " + std::to_string(max_threads) +
-			                 " threads, " + std::to_string(source_state->MaxThreads()) + " pairs\n";
-		} else {
-			std::cerr << " [Open] " + source_name + " --> " + sink->GetName() +
-			                 "\t #task/#thread: " + std::to_string(max_threads) + "/" + std::to_string(active_threads) +
-			                 "\tTick: " + std::to_string(milliseconds) + "ms\n";
-		}
-	}
+	//	if (sink->GetName() != "BATCH_CREATE_TABLE_AS") {
+	//		size_t active_threads = TaskScheduler::GetScheduler(executor.context).NumberOfThreads();
+	//		auto now = std::chrono::system_clock::now();
+	//		auto duration = now.time_since_epoch();
+	//		auto milliseconds = std::chrono::duration_cast<std::chrono::milliseconds>(duration).count() % 1000000;
+	//
+	//		std::string source_name = source->GetName();
+	//		if (source_name == "SEQ_SCAN ") {
+	//			string details = source->ParamsToString();
+	//			idx_t pos = details.find('\n');
+	//			source_name += "(" + details.substr(0, pos) + ")";
+	//		}
+	//		if (source_name == "IE_JOIN" || source_name == "ASOF_JOIN") {
+	//			std::cerr << " [Open] " + source_name + " --> " + sink->GetName() +
+	//			                 "\t #task/#thread: " + std::to_string(max_threads) + "/" +
+	//std::to_string(active_threads) +
+	//			                 "\tTick: " + std::to_string(milliseconds) + "ms, having " + std::to_string(max_threads)
+	//+ 			                 " threads, " + std::to_string(source_state->MaxThreads()) + " pairs\n"; 		} else { 			std::cerr << " [Open] " +
+	//source_name + " --> " + sink->GetName() +
+	//			                 "\t #task/#thread: " + std::to_string(max_threads) + "/" +
+	//std::to_string(active_threads) +
+	//			                 "\tTick: " + std::to_string(milliseconds) + "ms\n";
+	//		}
+	//	}
 
 	return LaunchScanTasks(event, max_threads);
 }

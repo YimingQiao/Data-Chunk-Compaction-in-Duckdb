@@ -82,14 +82,14 @@ int main() {
 	imdb.Query("SET threads TO 1;", nullptr, false);
 
 	// ------------------------------------ Execution -----------------------------------------------
-	std::vector<size_t> query_id(114);
-	for (size_t i = 0; i < query_id.size(); ++i)
-		query_id[i] = i + 1;
+	std::vector<size_t> query_id {29};
 	double time;
 	for (auto id : query_id) {
 		std::string query = imdb::get_query(id);
-		imdb.Query(query, &time, false);
-		if (time > 2) std::cout << "Query " << id << " time: " << time << " s\n";
+		imdb.Query(query, &time, true);
+		std::cout << "Query " << id << " time: " << time << " s\n";
+		duckdb::HashJoinProfiler::Get().PrintProfile();
+		duckdb::HashJoinProfiler::Get().Clear();
 	}
 
 	return 0;
