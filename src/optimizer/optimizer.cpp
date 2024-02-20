@@ -127,10 +127,10 @@ unique_ptr<LogicalOperator> Optimizer::Optimize(unique_ptr<LogicalOperator> plan
 
 	// then we perform the join ordering optimization
 	// this also rewrites cross products + filters into joins and performs filter pushdowns
-	//	RunOptimizer(OptimizerType::JOIN_ORDER, [&]() {
-	//		JoinOrderOptimizer optimizer(context);
-	//		plan = optimizer.Optimize(std::move(plan));
-	//	});
+	RunOptimizer(OptimizerType::JOIN_ORDER, [&]() {
+		JoinOrderOptimizer optimizer(context);
+		plan = optimizer.Optimize(std::move(plan));
+	});
 
 	// rewrites UNNESTs in DelimJoins by moving them to the projection
 	RunOptimizer(OptimizerType::UNNEST_REWRITER, [&]() {
@@ -199,17 +199,6 @@ unique_ptr<LogicalOperator> Optimizer::Optimize(unique_ptr<LogicalOperator> plan
 		ExpressionHeuristics expression_heuristics(*this);
 		plan = expression_heuristics.Rewrite(std::move(plan));
 	});
-
-	// In this part, we perform the bushy join ordering optimization
-	//	RunOptimizer(OptimizerType::JOIN_ORDER_BUSHY, [&]() {
-	//		BushyOrderOptimizer bushy(context);
-	//		plan = bushy.Rewrite(std::move(plan));
-	//	});
-
-	//	RunOptimizer(OptimizerType::CACHE_HASH_TABLE, [&]() {
-	//		SplitPipelineOptimizer cache(context);
-	//		plan = cache.Rewrite(std::move(plan));
-	//	});
 
 	for (auto &optimizer_extension : DBConfig::GetConfig(context).optimizer_extensions) {
 		RunOptimizer(OptimizerType::EXTENSION, [&]() {

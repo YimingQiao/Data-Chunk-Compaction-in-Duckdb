@@ -2,6 +2,7 @@
 
 #include "duckdb.hpp"
 #include "duckdb/common/box_renderer.hpp"
+#include "duckdb/optimizer/thread_scheduler.hpp"
 #include "third_party/imdb/include/imdb.hpp"
 
 class IMDBDatabase {
@@ -40,7 +41,6 @@ private:
 	// For drawing the query result.
 	duckdb::ClientContext client_;
 	duckdb::BoxRendererConfig config_;
-
 	duckdb::Profiler profiler_;
 
 	std::string ExplainQuery(const std::string &query) {
@@ -51,80 +51,46 @@ private:
 	}
 };
 
-void IMDBFinder(IMDBDatabase &imdb);
-
 int main() {
 	std::string db_name = "third_party/imdb/data/imdb.db";
 	// nullptr means in-memory database.
 	duckdb::DuckDB db(db_name);
 	IMDBDatabase imdb(db);
 
-	imdb.Query("SET threads TO 64;", nullptr, false);
-	std::vector<size_t> query_id = {1};
+	// ------------------------------------ Threads Settings -----------------------------------------------
+	{
+		auto &scheduler = duckdb::ThreadScheduler::Get();
+		using VecStr = std::vector<std::string>;
+		// [HashJoin]
+		{
+			// Build Hash Table
+			scheduler.SetThreadSetting(1, VecStr {"SEQ_SCAN ", "READ_PARQUET "}, VecStr {"HASH_JOIN"}, false);
+			scheduler.SetThreadSetting(1, VecStr {"HT_FINALIZE"}, VecStr {"HT_FINALIZE"}, false);
+			// Probe Hash Table
+			scheduler.SetThreadSetting(1, VecStr {"SEQ_SCAN ", "READ_PARQUET "}, VecStr {"EXPLAIN_ANALYZE"}, true);
+		}
+		// [BREAKER]
+		{
+			scheduler.SetThreadSetting(1, VecStr {"BREAKER"}, VecStr {""});
+			scheduler.SetThreadSetting(1, VecStr {"SEQ_SCAN ", "READ_PARQUET "}, VecStr {"BREAKER"});
+			scheduler.SetThreadSetting(1, VecStr {"SEQ_SCAN ", "READ_PARQUET "}, VecStr {"HASH_JOIN"}, true);
+		}
+
+		scheduler.SetThreadSetting(0, "CompactTuner", "CompactTuner");
+	}
+
+	imdb.Query("SET threads TO 1;", nullptr, false);
+
+	// ------------------------------------ Execution -----------------------------------------------
+	std::vector<size_t> query_id(114);
+	for (size_t i = 0; i < query_id.size(); ++i)
+		query_id[i] = i + 1;
 	double time;
 	for (auto id : query_id) {
 		std::string query = imdb::get_query(id);
 		imdb.Query(query, &time, false);
-		std::cout << "Query " << id << " time: " << time << " s\n";
+		if (time > 2) std::cout << "Query " << id << " time: " << time << " s\n";
 	}
 
 	return 0;
-}
-
-void IMDBFinder(IMDBDatabase &imdb) {  // Number of Queries
-	int num_queries = 114;
-
-	std::vector<uint32_t> interesting_queries;
-	for (size_t i = 1; i <= num_queries; ++i)
-		interesting_queries.push_back(i);
-
-	double time;
-	std::vector<double> single_thread_times;
-	std::vector<double> multi_thread_times;
-	std::vector<size_t> promising_queries;
-
-	for (auto i : interesting_queries) {
-		std::string query = imdb::get_query(i);
-		std::cout << "----------------------------------------------------------- " + std::to_string(i) +
-		                 " -----------------------------------------------------------\n";
-
-		// warm up
-		imdb.Query(query, nullptr, false);
-
-		// single thread
-		imdb.Query("SET threads TO 1;", nullptr, false);
-		imdb.Query(query, &time, false);
-		single_thread_times.push_back(time);
-
-		// multi thread
-		imdb.Query("SET threads TO 16;", nullptr, false);
-		imdb.Query(query, &time, false);
-		multi_thread_times.push_back(time);
-
-		if ((single_thread_times.back() - multi_thread_times.back()) > 0.05) {
-			promising_queries.push_back(i);
-			std::cout << "Query " << i << " single thread time: " << single_thread_times.back() << " s\t"
-			          << " multi thread time: " << multi_thread_times.back() << " s\t"
-			          << " Promising\n";
-		} else {
-			std::cout << "Query " << i << " single thread time: " << single_thread_times.back() << " s\t"
-			          << " multi thread time: " << multi_thread_times.back() << " s\n";
-		}
-	}
-
-	for (auto i : promising_queries) {
-		std::cout << "----------------------------------------------------------- Promising queries " +
-		                 std::to_string(i) + "-----------------------------------------------------------\n";
-		std::string query = imdb::get_query(i);
-		std::cout << query << "\n";
-
-		// warm up
-		imdb.Query(query, nullptr, false);
-
-		imdb.Query("SET threads TO 1;", nullptr, false);
-		imdb.Query(query, nullptr, true);
-
-		imdb.Query("SET threads TO 16;", nullptr, false);
-		imdb.Query(query, nullptr, true);
-	}
 }
