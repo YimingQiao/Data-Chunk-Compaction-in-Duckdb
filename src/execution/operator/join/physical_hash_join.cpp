@@ -575,7 +575,7 @@ OperatorResultType PhysicalHashJoin::ExecuteInternal(ExecutionContext &context, 
 	if (state.scan_structure) {
 		// still have elements remaining (i.e. we got >STANDARD_VECTOR_SIZE elements in the previous probe)
 		state.scan_structure->Next(state.join_keys, input, chunk);
-		HashJoinProfiler::Get().OutputChunk(chunk.size(), name);
+		HashJoinProfiler::Get().OutputChunk(input.size(), chunk.size(), name);
 
 		if (chunk.size() > 0) {
 			BeeProfiler::Get().InsertStatRecord(name + " - Have Remaining Elements #Tuple", chunk.size());
@@ -609,7 +609,7 @@ OperatorResultType PhysicalHashJoin::ExecuteInternal(ExecutionContext &context, 
 		HashJoinProfiler::Get().InputChunk(input.size(), name);
 	}
 	state.scan_structure->Next(state.join_keys, input, chunk);
-	HashJoinProfiler::Get().OutputChunk(chunk.size(), name);
+	HashJoinProfiler::Get().OutputChunk(input.size(), chunk.size(), name);
 
 	BeeProfiler::Get().InsertStatRecord(name + " #Tuple", chunk.size());
 	BeeProfiler::Get().InsertStatRecord(name, profiler.Elapsed());

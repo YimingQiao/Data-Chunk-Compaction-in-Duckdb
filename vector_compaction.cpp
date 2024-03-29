@@ -5,7 +5,9 @@
 #include "duckdb/common/negative_feedback.hpp"
 #include "duckdb/optimizer/thread_scheduler.hpp"
 
-void GenerateTables(duckdb::Connection &con);
+void GenerateTablesSkewedDist(duckdb::Connection &con);
+
+void GenerateTablesChunkFactor(duckdb::Connection &con);
 
 void ExecuteQuery(duckdb::Connection &con, std::string query, size_t running_times, size_t showing_times) {
 	if (running_times < showing_times) {
@@ -58,7 +60,7 @@ int main() {
 
 	// ---------------------------------------- Load Data --------------------------------------------------
 	{
-		GenerateTables(con);
+		GenerateTablesChunkFactor(con);
 
 		con.Query("CREATE TEMPORARY TABLE student AS SELECT * FROM read_parquet('student_simd.parquet');");
 		con.Query("CREATE TEMPORARY TABLE department AS SELECT * FROM read_parquet('department_simd.parquet');");
@@ -74,13 +76,7 @@ int main() {
 			scheduler.SetThreadSetting(4, VecStr {"SEQ_SCAN ", "READ_PARQUET "}, VecStr {"HASH_JOIN"}, false);
 			scheduler.SetThreadSetting(8, VecStr {"HT_FINALIZE"}, VecStr {"HT_FINALIZE"}, false);
 			// Probe Hash Table
-			scheduler.SetThreadSetting(4, VecStr {"SEQ_SCAN ", "READ_PARQUET "}, VecStr {"EXPLAIN_ANALYZE"}, true);
-		}
-		// [BREAKER]
-		{
-			scheduler.SetThreadSetting(8, VecStr {"BREAKER"}, VecStr {""});
-			scheduler.SetThreadSetting(4, VecStr {"SEQ_SCAN ", "READ_PARQUET "}, VecStr {"BREAKER"});
-			scheduler.SetThreadSetting(1, VecStr {"SEQ_SCAN ", "READ_PARQUET "}, VecStr {"HASH_JOIN"}, true);
+			scheduler.SetThreadSetting(1, VecStr {"SEQ_SCAN ", "READ_PARQUET "}, VecStr {"EXPLAIN_ANALYZE"}, true);
 		}
 	}
 
@@ -93,11 +89,9 @@ int main() {
 		    "FROM student, room, department, type "
 		    "WHERE student.stu_id = room.stu_id AND student.major_id = department.major_id AND room.type = type.type;";
 
-		// ExecuteQuery(con, bushy_query, 2, 1);
-
 		// enable auto-tuning
-		// scheduler.SetThreadSetting(1, "CompactTuner", "CompactTuner");
-		// ExecuteQuery(con, query, 6, 4);
+		scheduler.SetThreadSetting(1, "CompactTuner", "CompactTuner");
+		ExecuteQuery(con, query, 2, 1);
 
 		// disable auto-tuning
 		scheduler.SetThreadSetting(0, "CompactTuner", "CompactTuner");
@@ -105,7 +99,7 @@ int main() {
 	}
 }
 
-void GenerateTables(duckdb::Connection &con) {
+void GenerateTablesSkewedDist(duckdb::Connection &con) {
 	// Table student
 	con.Query(
 	    "CREATE OR REPLACE TABLE student AS "
@@ -195,6 +189,53 @@ void GenerateTables(duckdb::Connection &con) {
 	    "CREATE OR REPLACE TABLE type AS "
 	    "SELECT "
 	    "    CAST(type % 5e6 AS INT) AS type, "
+	    "    'room_type_' || type AS info "
+	    "FROM generate_series(1,  CAST(5e6 AS INT)) vals(type);");
+
+	con.Query("COPY student TO 'student_simd.parquet' (FORMAT PARQUET);");
+	con.Query("COPY department TO 'department_simd.parquet' (FORMAT PARQUET);");
+	con.Query("COPY room TO 'room_simd.parquet' (FORMAT PARQUET);");
+	con.Query("COPY type TO 'type_simd.parquet' (FORMAT PARQUET);");
+}
+
+void GenerateTablesChunkFactor(duckdb::Connection &con) {
+	// Table student
+	con.Query(
+	    "CREATE OR REPLACE TABLE student AS "
+	    "SELECT "
+	    "    CAST(stu_id AS INT) AS stu_id, "
+	    "    CAST((RANDOM() * 5e6) AS INT) AS major_id, "
+	    "    CAST((RANDOM() * 100) AS TINYINT) AS age "
+	    "FROM generate_series(1,  CAST(5e7 AS INT)) vals(stu_id);");
+
+	std::string str_1, str_2;
+	for (size_t i = 0; i < 0; i++)
+		str_1 += "abcd";
+
+	// Table: department
+	con.Query(
+	    "CREATE OR REPLACE TABLE department AS "
+	    "SELECT "
+	    "    CAST(major_id * 8 % 5e6 AS INT) AS major_id, "
+	    "	'_" +
+	    str_1 +
+	    "' || (major_id) AS name, "
+	    "FROM generate_series(1,  CAST(5e6 AS INT)) vals(major_id);");
+
+	// Table room
+	con.Query(
+	    "CREATE OR REPLACE TABLE room AS "
+	    "SELECT "
+	    "	 room_id AS room_id, "
+	    "    CAST(room_id * 8 % 5e7 AS INT) AS stu_id, "
+	    "    CAST((RANDOM() * 5e6) AS INT) AS type "
+	    "FROM generate_series(1,  CAST(5e7 AS INT)) vals(room_id);");
+
+	// Table type
+	con.Query(
+	    "CREATE OR REPLACE TABLE type AS "
+	    "SELECT "
+	    "    CAST(type * 8 % 5e6 AS INT) AS type, "
 	    "    'room_type_' || type AS info "
 	    "FROM generate_series(1,  CAST(5e6 AS INT)) vals(type);");
 
