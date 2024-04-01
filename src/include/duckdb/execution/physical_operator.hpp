@@ -224,7 +224,6 @@ public:
 	CompactingPhysicalOperator(PhysicalOperatorType type, vector<LogicalType> types, idx_t estimated_cardinality);
 
 	bool compacting_supported;
-	bool auto_tuning;
 
 public:
 	OperatorResultType Execute(ExecutionContext &context, DataChunk &input, DataChunk &chunk,

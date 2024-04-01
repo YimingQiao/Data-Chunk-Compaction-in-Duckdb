@@ -204,60 +204,6 @@ PipelineExecuteResult PipelineExecutor::Execute(idx_t max_chunks) {
 				if (source_result == SourceResultType::FINISHED) {
 					exhausted_source = true;
 				}
-
-				// ---------------------------------------- Learning ------------------------------------------------
-				Profiler profiler_compact;
-				profiler_compact.Start();
-
-				if (!thread.started) thread.time_stores.resize(CompactTuner::Get().GetBanditSize(), 0);
-
-				// check if this pipelien has at least one hash join operator with auto-tuning.
-				bool flag = false;
-				for (auto &op : pipeline.operators) {
-					if (op.get().type == PhysicalOperatorType::HASH_JOIN) {
-						auto &join = (PhysicalHashJoin &)op.get();
-						if (join.auto_tuning) {
-							flag = true;
-							break;
-						}
-					}
-				}
-
-				if (flag) {
-					// [Compaction Threshold] init the thread time stores.
-					double time_ = 0;
-					auto *sink_info = thread.profiler.GetOperatorInfo(*pipeline.sink);
-					if (sink_info) time_ += sink_info->time;
-					for (int64_t k = pipeline.operators.size() - 1; k >= 0; k--) {
-						auto &op = pipeline.operators[k];
-						auto *info = thread.profiler.GetOperatorInfo(op);
-
-						if (info) time_ += info->time;
-
-						if (pipeline.operators[k].get().type == PhysicalOperatorType::HASH_JOIN) {
-							// join operator
-							auto *join = (PhysicalHashJoin *)&op.get();
-							int64_t id = CompactTuner::Get().GetId(size_t(join));
-
-							// join id
-							if (id == -1) continue;
-
-							// update the estimated mean of the arm.
-							if (thread.started) {
-								double delta = time_ - thread.time_stores[id];
-								if (delta > 0) {
-									thread.time_stores[id] = time_;
-									CompactTuner::Get().UpdateArm(id, join->compact_threshold, 1 / delta / 1e3);
-								}
-							}
-							join->compact_threshold = CompactTuner::Get().SelectArm(id);
-						}
-					}
-					thread.started = true;
-				}
-				BeeProfiler::Get().InsertStatRecord("[ParameterTuning - Update Compaction Threshold]",
-				                                    profiler_compact.Elapsed());
-				// --------------------------------------------------------------------------------------------------
 			}
 
 			if (requires_batch_index) {

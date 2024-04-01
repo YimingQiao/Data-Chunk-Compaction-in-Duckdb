@@ -237,7 +237,7 @@ bool CompactingPhysicalOperator::CanCacheType(const LogicalType &type) {
 
 CompactingPhysicalOperator::CompactingPhysicalOperator(PhysicalOperatorType type, vector<LogicalType> types_p,
                                                        idx_t estimated_cardinality)
-    : PhysicalOperator(type, std::move(types_p), estimated_cardinality), auto_tuning(false) {
+    : PhysicalOperator(type, std::move(types_p), estimated_cardinality) {
 	compacting_supported = true;
 	for (auto &col_type : types) {
 		if (!CanCacheType(col_type)) {
@@ -295,10 +295,6 @@ OperatorResultType CompactingPhysicalOperator::Execute(ExecutionContext &context
 
 		if (state.cached_chunk->size() >= (STANDARD_VECTOR_SIZE - compact_threshold) ||
 		    child_result == OperatorResultType::FINISHED) {
-			// chunk cache full: return it
-			//			chunk.Reset();
-			//			state.cached_chunk->Copy(chunk);
-			//			state.cached_chunk->Reset();
 			chunk.Move(*state.cached_chunk);
 			state.cached_chunk->Initialize(Allocator::Get(context.client), chunk.GetTypes());
 

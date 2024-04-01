@@ -26,6 +26,7 @@ public:
 		SetThreadSetting(value, sources, sinks, false);
 		SetThreadSetting(value, sources, sinks, true);
 	}
+
 	void SetThreadSetting(size_t value, const vector<string> &sources, const vector<string> &sinks, bool has_operator) {
 		for (auto &sink : sinks) {
 			for (auto &source : sources) {
@@ -33,10 +34,12 @@ public:
 			}
 		}
 	}
+
 	void SetThreadSetting(size_t value, const string &source, const string &sink) {
 		SetThreadSetting(value, source, sink, false);
 		SetThreadSetting(value, source, sink, true);
 	}
+
 	void SetThreadSetting(size_t value, const string &source, const string &sink, bool has_operator) {
 		string key = GenerateKey(source, sink, has_operator);
 		thread_setting_[key] = value;
