@@ -85,7 +85,8 @@ int main() {
 		    "EXPLAIN ANALYZE "
 		    "SELECT student.stu_id, department.name, room.room_id, type.type,  "
 		    "FROM student, room, department, type "
-		    "WHERE student.stu_id = room.stu_id AND student.major_id = department.major_id AND room.type = type.type;";
+		    "WHERE student.stu_id = room.stu_id AND student.major_id = department.major_id AND room.type = type.type "
+		    "AND student.stu_id <= 5e6;";
 
 		ExecuteQuery(con, query, 2, 1);  // the first time is warm-up
 	}

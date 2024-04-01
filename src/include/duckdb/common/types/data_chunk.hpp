@@ -50,7 +50,7 @@ public:
 	vector<Vector> data;
 
 public:
-	inline idx_t size() const { // NOLINT
+	inline idx_t size() const {  // NOLINT
 		return count;
 	}
 	inline idx_t ColumnCount() const {
@@ -136,6 +136,11 @@ public:
 	//! Turning all Vectors into Dictionary Vectors, using 'sel'
 	DUCKDB_API void Slice(DataChunk &other, const SelectionVector &sel, idx_t count, idx_t col_offset = 0);
 
+	//! Slice all Vectors from other.data[i] to data[i + 'col_offset']
+	//! Turning all Vectors into Dictionary Vectors, using 'sel'
+	//! Concatenating the new selection vector to the original
+	DUCKDB_API void ConcatenateSlice(DataChunk &other, const SelectionVector &sel, idx_t count, idx_t col_offset = 0);
+
 	//! Resets the DataChunk to its state right after the DataChunk::Initialize
 	//! function was called. This sets the count to 0, and resets each member
 	//! Vector to point back to the data owned by this DataChunk.
@@ -170,4 +175,4 @@ private:
 	//! Vector caches, used to store data when ::Initialize is called
 	vector<VectorCache> vector_caches;
 };
-} // namespace duckdb
+}  // namespace duckdb

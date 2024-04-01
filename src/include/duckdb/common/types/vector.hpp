@@ -124,6 +124,15 @@ public:
 	//! Slice the vector, keeping the result around in a cache or potentially using the cache instead of slicing
 	DUCKDB_API void Slice(const SelectionVector &sel, idx_t count, SelCache &cache);
 
+	//! Creates a reference to a slice of the other vector
+	DUCKDB_API void ConcatenateSlice(Vector &other, idx_t offset, idx_t end);
+	//! Creates a reference to a slice of the other vector
+	DUCKDB_API void ConcatenateSlice(Vector &other, const SelectionVector &sel, idx_t count);
+	//! Turns the vector into a dictionary vector with the specified dictionary
+	DUCKDB_API void ConcatenateSlice(const SelectionVector &sel, idx_t count);
+	//! Slice the vector, keeping the result around in a cache or potentially using the cache instead of slicing
+	DUCKDB_API void ConcatenateSlice(const SelectionVector &sel, idx_t count, SelCache &cache);
+
 	//! Creates the data of this vector with the specified type. Any data that
 	//! is currently in the vector is destroyed.
 	DUCKDB_API void Initialize(bool zero_data = false, idx_t capacity = STANDARD_VECTOR_SIZE);

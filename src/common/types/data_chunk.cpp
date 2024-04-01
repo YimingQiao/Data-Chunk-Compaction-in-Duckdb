@@ -312,6 +312,21 @@ void DataChunk::Slice(DataChunk &other, const SelectionVector &sel, idx_t count_
 	}
 }
 
+void DataChunk::ConcatenateSlice(DataChunk &other, const SelectionVector &sel, idx_t count_p, idx_t col_offset) {
+	D_ASSERT(other.ColumnCount() <= col_offset + ColumnCount());
+	this->count = count_p;
+	SelCache merge_cache;
+	for (idx_t c = 0; c < other.ColumnCount(); c++) {
+		if (other.data[c].GetVectorType() == VectorType::DICTIONARY_VECTOR) {
+			// already a dictionary! merge the dictionaries
+			data[col_offset + c].Reference(other.data[c]);
+			data[col_offset + c].ConcatenateSlice(sel, count_p, merge_cache);
+		} else {
+			data[col_offset + c].ConcatenateSlice(other.data[c], sel, count_p);
+		}
+	}
+}
+
 unsafe_unique_array<UnifiedVectorFormat> DataChunk::ToUnifiedFormat() {
 	auto unified_data = make_unsafe_uniq_array<UnifiedVectorFormat>(ColumnCount());
 	for (idx_t col_idx = 0; col_idx < ColumnCount(); col_idx++) {

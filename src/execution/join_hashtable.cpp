@@ -388,16 +388,24 @@ ScanStructure::ScanStructure(JoinHashTable &ht_p, TupleDataChunkState &key_state
       pointers(LogicalType::POINTER),
       sel_vector(STANDARD_VECTOR_SIZE),
       ht(ht_p),
-      finished(false) {
+      finished(false),
+      buffer(nullptr) {
 }
 
 void ScanStructure::Next(DataChunk &keys, DataChunk &left, DataChunk &result) {
 	if (finished) {
 		return;
 	}
+
+	result.Reset();
+	if (buffer && buffer->size() > 0) result.Swap(*buffer.get());
+
 	switch (ht.join_type) {
 		case JoinType::INNER:
 		case JoinType::RIGHT:
+			//			while (count > 0 && !buffer) {
+			//				NextInnerJoin(keys, left, result);
+			//			}
 			NextInnerJoin(keys, left, result);
 			break;
 		case JoinType::SEMI:
@@ -494,8 +502,8 @@ void ScanStructure::GatherResult(Vector &result, const SelectionVector &result_v
 }
 
 void ScanStructure::GatherResult(Vector &result, const SelectionVector &sel_vector, const idx_t count,
-                                 const idx_t col_idx) {
-	GatherResult(result, *FlatVector::IncrementalSelectionVector(), sel_vector, count, col_idx);
+                                 const idx_t col_idx, const idx_t target_sel_start) {
+	GatherResult(result, SelectionVector(target_sel_start, count), sel_vector, count, col_idx);
 }
 
 void ScanStructure::NextInnerJoin(DataChunk &keys, DataChunk &left, DataChunk &result) {
@@ -506,9 +514,9 @@ void ScanStructure::NextInnerJoin(DataChunk &keys, DataChunk &left, DataChunk &r
 	}
 
 	SelectionVector result_vector(STANDARD_VECTOR_SIZE);
-
 	idx_t result_count = ScanInnerJoin(keys, result_vector);
 	if (result_count > 0) {
+		// yiqiao: currently, logical compaction does not support outer join
 		if (IsRightOuterJoin(ht.join_type)) {
 			// full/right outer join: mark join matches as FOUND in the HT
 			auto ptrs = FlatVector::GetData<data_ptr_t>(pointers);
@@ -519,17 +527,35 @@ void ScanStructure::NextInnerJoin(DataChunk &keys, DataChunk &left, DataChunk &r
 				Store<bool>(true, ptrs[idx] + ht.tuple_size);
 			}
 		}
+
+		// put new tuples in the result chunk if it has space, otherwise put new tuples in the buffer.
+		DataChunk *res_chunk;
+		idx_t base_count;
+		if (result.size() + result_count <= STANDARD_VECTOR_SIZE) {
+			base_count = result.size();
+			res_chunk = &result;
+		} else {
+			// init the buffer
+			if (buffer == nullptr) {
+				buffer = make_uniq<DataChunk>();
+				buffer->Initialize(Allocator::DefaultAllocator(), result.GetTypes());
+			}
+			res_chunk = buffer.get();
+			base_count = 0;
+		}
+
 		// matches were found
 		// construct the result
 		// on the LHS, we create a slice using the result vector
-		result.Slice(left, result_vector, result_count);
+		res_chunk->Slice(left, result_vector, result_count);
 
 		// on the RHS, we need to fetch the data from the hash table
 		for (idx_t i = 0; i < ht.build_types.size(); i++) {
-			auto &vector = result.data[left.ColumnCount() + i];
+			auto &vector = res_chunk->data[left.ColumnCount() + i];
 			D_ASSERT(vector.GetType() == ht.build_types[i]);
-			GatherResult(vector, result_vector, result_count, i + ht.condition_types.size());
+			GatherResult(vector, result_vector, result_count, i + ht.condition_types.size(), base_count);
 		}
+
 		AdvancePointers();
 	}
 }

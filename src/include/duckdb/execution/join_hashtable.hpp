@@ -74,6 +74,9 @@ public:
 		JoinHashTable &ht;
 		bool finished;
 
+		// buffer
+		unique_ptr<DataChunk> buffer;
+
 		explicit ScanStructure(JoinHashTable &ht, TupleDataChunkState &key_state);
 		//! Get the next batch of data from the scan structure
 		void Next(DataChunk &keys, DataChunk &left, DataChunk &result);
@@ -108,7 +111,8 @@ public:
 		void AdvancePointers(const SelectionVector &sel, idx_t sel_count);
 		void GatherResult(Vector &result, const SelectionVector &result_vector, const SelectionVector &sel_vector,
 		                  const idx_t count, const idx_t col_idx);
-		void GatherResult(Vector &result, const SelectionVector &sel_vector, const idx_t count, const idx_t col_idx);
+		void GatherResult(Vector &result, const SelectionVector &sel_vector, const idx_t count, const idx_t col_idx,
+		                  const idx_t target_sel_start = 0);
 		idx_t ResolvePredicates(DataChunk &keys, SelectionVector &match_sel, SelectionVector *no_match_sel);
 	};
 
@@ -331,4 +335,4 @@ private:
 	idx_t partition_end;
 };
 
-} // namespace duckdb
+}  // namespace duckdb
