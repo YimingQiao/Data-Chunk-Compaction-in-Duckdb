@@ -393,21 +393,18 @@ ScanStructure::ScanStructure(JoinHashTable &ht_p, TupleDataChunkState &key_state
 }
 
 void ScanStructure::Next(DataChunk &keys, DataChunk &left, DataChunk &result) {
-	if (finished) {
-		return;
-	}
+	if (finished) return;
 
 	result.Reset();
-	if (buffer && buffer->size() > 0) result.Swap(*buffer.get());
+	if (buffer && buffer->size() > 0) result.Swap(*buffer);
 
 	switch (ht.join_type) {
 		case JoinType::INNER:
-		case JoinType::RIGHT:
-			//			while (count > 0 && !buffer) {
-			//				NextInnerJoin(keys, left, result);
-			//			}
-			NextInnerJoin(keys, left, result);
+		case JoinType::RIGHT: {
+			while (count > 0 && !HasBuffer())
+				NextInnerJoin(keys, left, result);
 			break;
+		}
 		case JoinType::SEMI:
 			NextSemiJoin(keys, left, result);
 			break;
@@ -547,7 +544,7 @@ void ScanStructure::NextInnerJoin(DataChunk &keys, DataChunk &left, DataChunk &r
 		// matches were found
 		// construct the result
 		// on the LHS, we create a slice using the result vector
-		res_chunk->Slice(left, result_vector, result_count);
+		res_chunk->ConcatenateSlice(left, result_vector, result_count, base_count, 0);
 
 		// on the RHS, we need to fetch the data from the hash table
 		for (idx_t i = 0; i < ht.build_types.size(); i++) {

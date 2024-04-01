@@ -139,7 +139,8 @@ public:
 	//! Slice all Vectors from other.data[i] to data[i + 'col_offset']
 	//! Turning all Vectors into Dictionary Vectors, using 'sel'
 	//! Concatenating the new selection vector to the original
-	DUCKDB_API void ConcatenateSlice(DataChunk &other, const SelectionVector &sel, idx_t count, idx_t col_offset = 0);
+	DUCKDB_API void ConcatenateSlice(DataChunk &other, const SelectionVector &sel, idx_t count, idx_t base_count = 0,
+	                                 idx_t col_offset = 0);
 
 	//! Resets the DataChunk to its state right after the DataChunk::Initialize
 	//! function was called. This sets the count to 0, and resets each member

@@ -105,6 +105,10 @@ public:
 
 		idx_t ScanInnerJoin(DataChunk &keys, SelectionVector &result_vector);
 
+		bool HasBuffer() const {
+			return buffer != nullptr && buffer->size() > 0;
+		}
+
 	public:
 		void InitializeSelectionVector(const SelectionVector *&current_sel);
 		void AdvancePointers();

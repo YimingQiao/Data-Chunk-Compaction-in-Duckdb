@@ -215,91 +215,27 @@ void Vector::Slice(const SelectionVector &sel, idx_t count, SelCache &cache) {
 	}
 }
 
-void Vector::ConcatenateSlice(Vector &other, idx_t offset, idx_t end) {
-	if (other.GetVectorType() == VectorType::CONSTANT_VECTOR) {
+void Vector::ConcatenateSlice(Vector &other, const SelectionVector &sel, idx_t count, idx_t base_count) {
+	if (this->data != other.data) {
 		Reference(other);
-		return;
-	}
-	D_ASSERT(other.GetVectorType() == VectorType::FLAT_VECTOR);
-
-	auto internal_type = GetType().InternalType();
-	if (internal_type == PhysicalType::STRUCT) {
-		Vector new_vector(GetType());
-		auto &entries = StructVector::GetEntries(new_vector);
-		auto &other_entries = StructVector::GetEntries(other);
-		D_ASSERT(entries.size() == other_entries.size());
-		for (idx_t i = 0; i < entries.size(); i++) {
-			entries[i]->Slice(*other_entries[i], offset, end);
-		}
-		new_vector.validity.Slice(other.validity, offset, end - offset);
-		Reference(new_vector);
-	} else {
-		Reference(other);
-		if (offset > 0) {
-			data = data + GetTypeIdSize(internal_type) * offset;
-			validity.Slice(other.validity, offset, end - offset);
-		}
-	}
-}
-
-void Vector::ConcatenateSlice(Vector &other, const SelectionVector &sel, idx_t count) {
-	Reference(other);
-	ConcatenateSlice(sel, count);
-}
-
-void Vector::ConcatenateSlice(const SelectionVector &sel, idx_t count) {
-	if (GetVectorType() == VectorType::CONSTANT_VECTOR) {
-		// dictionary on a constant is just a constant
-		return;
-	}
-	if (GetVectorType() == VectorType::DICTIONARY_VECTOR) {
-		// already a dictionary, slice the current dictionary
-		auto &current_sel = DictionaryVector::SelVector(*this);
-		auto sliced_dictionary = current_sel.Slice(sel, count);
-		buffer = make_buffer<DictionaryBuffer>(std::move(sliced_dictionary));
-		if (GetType().InternalType() == PhysicalType::STRUCT) {
-			auto &child_vector = DictionaryVector::Child(*this);
-
-			Vector new_child(child_vector);
-			new_child.auxiliary = make_buffer<VectorStructBuffer>(new_child, sel, count);
-			auxiliary = make_buffer<VectorChildBuffer>(std::move(new_child));
-		}
+		Slice(sel, count);
 		return;
 	}
 
-	if (GetVectorType() == VectorType::FSST_VECTOR) {
-		Flatten(sel, count);
-		return;
-	}
+	if (this->GetVectorType() == VectorType::DICTIONARY_VECTOR) {
+		auto &dict_codes = DictionaryVector::SelVector(*this);
 
-	Vector child_vector(*this);
-	auto internal_type = GetType().InternalType();
-	if (internal_type == PhysicalType::STRUCT) {
-		child_vector.auxiliary = make_buffer<VectorStructBuffer>(*this, sel, count);
-	}
-	auto child_ref = make_buffer<VectorChildBuffer>(std::move(child_vector));
-	auto dict_buffer = make_buffer<DictionaryBuffer>(sel);
-	vector_type = VectorType::DICTIONARY_VECTOR;
-	buffer = std::move(dict_buffer);
-	auxiliary = std::move(child_ref);
-}
-
-void Vector::ConcatenateSlice(const SelectionVector &sel, idx_t count, SelCache &cache) {
-	if (GetVectorType() == VectorType::DICTIONARY_VECTOR && GetType().InternalType() != PhysicalType::STRUCT) {
-		// dictionary vector: need to merge dictionaries
-		// check if we have a cached entry
-		auto &current_sel = DictionaryVector::SelVector(*this);
-		auto target_data = current_sel.data();
-		auto entry = cache.cache.find(target_data);
-		if (entry != cache.cache.end()) {
-			// cached entry exists: use that
-			this->buffer = make_buffer<DictionaryBuffer>(entry->second->Cast<DictionaryBuffer>().GetSelVector());
-			vector_type = VectorType::DICTIONARY_VECTOR;
-		} else {
-			cache.cache[target_data] = this->buffer;
+		if (other.GetVectorType() == VectorType::FLAT_VECTOR) {
+			for (idx_t i = 0; i < count; i++) {
+				dict_codes[base_count + i] = sel.get_index(i);
+			}
+		} else if (other.GetVectorType() == VectorType::DICTIONARY_VECTOR) {
+			auto &current_sel = DictionaryVector::SelVector(other);
+			for (idx_t i = 0; i < count; i++) {
+				idx_t idx = sel.get_index(i);
+				dict_codes[base_count + i] = current_sel.get_index(idx);
+			}
 		}
-	} else {
-		ConcatenateSlice(sel, count);
 	}
 }
 

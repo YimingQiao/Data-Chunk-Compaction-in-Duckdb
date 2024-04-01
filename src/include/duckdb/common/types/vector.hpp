@@ -125,13 +125,7 @@ public:
 	DUCKDB_API void Slice(const SelectionVector &sel, idx_t count, SelCache &cache);
 
 	//! Creates a reference to a slice of the other vector
-	DUCKDB_API void ConcatenateSlice(Vector &other, idx_t offset, idx_t end);
-	//! Creates a reference to a slice of the other vector
-	DUCKDB_API void ConcatenateSlice(Vector &other, const SelectionVector &sel, idx_t count);
-	//! Turns the vector into a dictionary vector with the specified dictionary
-	DUCKDB_API void ConcatenateSlice(const SelectionVector &sel, idx_t count);
-	//! Slice the vector, keeping the result around in a cache or potentially using the cache instead of slicing
-	DUCKDB_API void ConcatenateSlice(const SelectionVector &sel, idx_t count, SelCache &cache);
+	DUCKDB_API void ConcatenateSlice(Vector &other, const SelectionVector &sel, idx_t count, idx_t base_count);
 
 	//! Creates the data of this vector with the specified type. Any data that
 	//! is currently in the vector is destroyed.
@@ -446,8 +440,8 @@ struct MapVector {
 	DUCKDB_API static const Vector &GetValues(const Vector &vector);
 	DUCKDB_API static Vector &GetKeys(Vector &vector);
 	DUCKDB_API static Vector &GetValues(Vector &vector);
-	DUCKDB_API static MapInvalidReason
-	CheckMapValidity(Vector &map, idx_t count, const SelectionVector &sel = *FlatVector::IncrementalSelectionVector());
+	DUCKDB_API static MapInvalidReason CheckMapValidity(
+	    Vector &map, idx_t count, const SelectionVector &sel = *FlatVector::IncrementalSelectionVector());
 	DUCKDB_API static void MapConversionVerify(Vector &vector, idx_t count);
 };
 
@@ -504,9 +498,8 @@ struct UnionVector {
 	DUCKDB_API static void SetToMember(Vector &vector, union_tag_t tag, Vector &member_vector, idx_t count,
 	                                   bool keep_tags_for_null);
 
-	DUCKDB_API static UnionInvalidReason
-	CheckUnionValidity(Vector &vector, idx_t count,
-	                   const SelectionVector &sel = *FlatVector::IncrementalSelectionVector());
+	DUCKDB_API static UnionInvalidReason CheckUnionValidity(
+	    Vector &vector, idx_t count, const SelectionVector &sel = *FlatVector::IncrementalSelectionVector());
 };
 
 struct SequenceVector {
@@ -523,4 +516,4 @@ struct SequenceVector {
 	}
 };
 
-} // namespace duckdb
+}  // namespace duckdb

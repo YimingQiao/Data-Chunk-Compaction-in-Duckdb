@@ -4,18 +4,17 @@
 #include "duckdb/common/exception.hpp"
 #include "duckdb/common/helper.hpp"
 #include "duckdb/common/printer.hpp"
-#include "duckdb/common/serializer/serializer.hpp"
+#include "duckdb/common/serializer/binary_deserializer.hpp"
+#include "duckdb/common/serializer/binary_serializer.hpp"
 #include "duckdb/common/serializer/deserializer.hpp"
+#include "duckdb/common/serializer/memory_stream.hpp"
+#include "duckdb/common/serializer/serializer.hpp"
 #include "duckdb/common/types/interval.hpp"
 #include "duckdb/common/types/sel_cache.hpp"
 #include "duckdb/common/types/vector_cache.hpp"
 #include "duckdb/common/vector.hpp"
 #include "duckdb/common/vector_operations/vector_operations.hpp"
 #include "duckdb/execution/execution_context.hpp"
-
-#include "duckdb/common/serializer/memory_stream.hpp"
-#include "duckdb/common/serializer/binary_serializer.hpp"
-#include "duckdb/common/serializer/binary_deserializer.hpp"
 
 namespace duckdb {
 
@@ -39,8 +38,8 @@ void DataChunk::Initialize(ClientContext &context, const vector<LogicalType> &ty
 
 void DataChunk::Initialize(Allocator &allocator, vector<LogicalType>::const_iterator begin,
                            vector<LogicalType>::const_iterator end, idx_t capacity_p) {
-	D_ASSERT(data.empty());                   // can only be initialized once
-	D_ASSERT(std::distance(begin, end) != 0); // empty chunk not allowed
+	D_ASSERT(data.empty());                    // can only be initialized once
+	D_ASSERT(std::distance(begin, end) != 0);  // empty chunk not allowed
 	capacity = capacity_p;
 	for (; begin != end; begin++) {
 		VectorCache cache(allocator, *begin, capacity);
@@ -56,8 +55,8 @@ void DataChunk::Initialize(ClientContext &context, vector<LogicalType>::const_it
 
 void DataChunk::InitializeEmpty(vector<LogicalType>::const_iterator begin, vector<LogicalType>::const_iterator end) {
 	capacity = STANDARD_VECTOR_SIZE;
-	D_ASSERT(data.empty());                   // can only be initialized once
-	D_ASSERT(std::distance(begin, end) != 0); // empty chunk not allowed
+	D_ASSERT(data.empty());                    // can only be initialized once
+	D_ASSERT(std::distance(begin, end) != 0);  // empty chunk not allowed
 	for (; begin != end; begin++) {
 		data.emplace_back(*begin, nullptr);
 	}
@@ -242,7 +241,6 @@ string DataChunk::ToString() const {
 }
 
 void DataChunk::Serialize(Serializer &serializer) const {
-
 	// write the count
 	auto row_count = size();
 	serializer.WriteProperty<sel_t>(100, "rows", row_count);
@@ -267,7 +265,6 @@ void DataChunk::Serialize(Serializer &serializer) const {
 }
 
 void DataChunk::Deserialize(Deserializer &deserializer) {
-
 	// read and set the row count
 	auto row_count = deserializer.ReadProperty<sel_t>(100, "rows");
 
@@ -312,18 +309,12 @@ void DataChunk::Slice(DataChunk &other, const SelectionVector &sel, idx_t count_
 	}
 }
 
-void DataChunk::ConcatenateSlice(DataChunk &other, const SelectionVector &sel, idx_t count_p, idx_t col_offset) {
+void DataChunk::ConcatenateSlice(DataChunk &other, const SelectionVector &sel, idx_t count_p, idx_t base_count,
+                                 idx_t col_offset) {
 	D_ASSERT(other.ColumnCount() <= col_offset + ColumnCount());
-	this->count = count_p;
-	SelCache merge_cache;
+	this->count += count_p;
 	for (idx_t c = 0; c < other.ColumnCount(); c++) {
-		if (other.data[c].GetVectorType() == VectorType::DICTIONARY_VECTOR) {
-			// already a dictionary! merge the dictionaries
-			data[col_offset + c].Reference(other.data[c]);
-			data[col_offset + c].ConcatenateSlice(sel, count_p, merge_cache);
-		} else {
-			data[col_offset + c].ConcatenateSlice(other.data[c], sel, count_p);
-		}
+		data[col_offset + c].ConcatenateSlice(other.data[c], sel, count_p, base_count);
 	}
 }
 
@@ -394,4 +385,4 @@ void DataChunk::Print() const {
 	Printer::Print(ToString());
 }
 
-} // namespace duckdb
+}  // namespace duckdb
