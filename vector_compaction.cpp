@@ -90,10 +90,9 @@ int main() {
 
 		std::string outer_join =
 		    "EXPLAIN ANALYZE "
-		    "SELECT student.stu_id, department.name, "
-		    "FROM student "
-		    "SEMI JOIN department "
-		    "	ON student.major_id = department.major_id;";
+		    "SELECT student.stu_id, student.major_id, "
+		    "FROM student FULL JOIN department ON student.major_id = department.major_id "
+		    "WHERE student.stu_id <= 4e1;";
 
 		ExecuteQuery(con, outer_join, 2, 1);  // the first time is warm-up
 	}

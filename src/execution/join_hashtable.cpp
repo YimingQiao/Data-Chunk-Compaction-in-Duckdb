@@ -401,22 +401,29 @@ void ScanStructure::Next(DataChunk &keys, DataChunk &left, DataChunk &result) {
 	switch (ht.join_type) {
 		case JoinType::INNER:
 		case JoinType::RIGHT:
+			// [Logical Compaction] Done.
 			NextInnerJoin(keys, left, result);
 			break;
 		case JoinType::SEMI:
+			// [Logical Compaction] Semi join does not need compaction:
+			// Because (1) at most one Next() is called. (2) small chunks from different probing() cannot be compacted.
 			NextSemiJoin(keys, left, result);
 			break;
 		case JoinType::MARK:
+			// [Logical Compaction] Mark join does not need compaction for the same reasons.
 			NextMarkJoin(keys, left, result);
 			break;
 		case JoinType::ANTI:
+			// [Logical Compaction] Anti join does not need compaction for the same reasons.
 			NextAntiJoin(keys, left, result);
 			break;
 		case JoinType::OUTER:
 		case JoinType::LEFT:
+			// [Logical Compaction] Done.
 			NextLeftJoin(keys, left, result);
 			break;
 		case JoinType::SINGLE:
+			// [Logical Compaction] Single join does not need compaction for the same reasons.
 			NextSingleJoin(keys, left, result);
 			break;
 		default:
@@ -508,7 +515,7 @@ void ScanStructure::NextInnerJoin(DataChunk &keys, DataChunk &left, DataChunk &r
 		SelectionVector result_vector(STANDARD_VECTOR_SIZE);
 		idx_t result_count = ScanInnerJoin(keys, result_vector);
 		if (result_count > 0) {
-			// yiqiao: currently, logical compaction does not support outer join
+			// yiqiao: I am not sure if it works.
 			if (IsRightOuterJoin(ht.join_type)) {
 				// full/right outer join: mark join matches as FOUND in the HT
 				auto ptrs = FlatVector::GetData<data_ptr_t>(pointers);
