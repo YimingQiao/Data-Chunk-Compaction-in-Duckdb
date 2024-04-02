@@ -400,11 +400,9 @@ void ScanStructure::Next(DataChunk &keys, DataChunk &left, DataChunk &result) {
 
 	switch (ht.join_type) {
 		case JoinType::INNER:
-		case JoinType::RIGHT: {
-			while (count > 0 && !HasBuffer())
-				NextInnerJoin(keys, left, result);
+		case JoinType::RIGHT:
+			NextInnerJoin(keys, left, result);
 			break;
-		}
 		case JoinType::SEMI:
 			NextSemiJoin(keys, left, result);
 			break;
@@ -505,55 +503,54 @@ void ScanStructure::GatherResult(Vector &result, const SelectionVector &sel_vect
 
 void ScanStructure::NextInnerJoin(DataChunk &keys, DataChunk &left, DataChunk &result) {
 	D_ASSERT(result.ColumnCount() == left.ColumnCount() + ht.build_types.size());
-	if (this->count == 0) {
-		// no pointers left to chase
-		return;
-	}
 
-	SelectionVector result_vector(STANDARD_VECTOR_SIZE);
-	idx_t result_count = ScanInnerJoin(keys, result_vector);
-	if (result_count > 0) {
-		// yiqiao: currently, logical compaction does not support outer join
-		if (IsRightOuterJoin(ht.join_type)) {
-			// full/right outer join: mark join matches as FOUND in the HT
-			auto ptrs = FlatVector::GetData<data_ptr_t>(pointers);
-			for (idx_t i = 0; i < result_count; i++) {
-				auto idx = result_vector.get_index(i);
-				// NOTE: threadsan reports this as a data race because this can be set concurrently by separate threads
-				// Technically it is, but it does not matter, since the only value that can be written is "true"
-				Store<bool>(true, ptrs[idx] + ht.tuple_size);
+	while (this->count > 0 && !HasBuffer()) {
+		SelectionVector result_vector(STANDARD_VECTOR_SIZE);
+		idx_t result_count = ScanInnerJoin(keys, result_vector);
+		if (result_count > 0) {
+			// yiqiao: currently, logical compaction does not support outer join
+			if (IsRightOuterJoin(ht.join_type)) {
+				// full/right outer join: mark join matches as FOUND in the HT
+				auto ptrs = FlatVector::GetData<data_ptr_t>(pointers);
+				for (idx_t i = 0; i < result_count; i++) {
+					auto idx = result_vector.get_index(i);
+					// NOTE: threadsan reports this as a data race because this can be set concurrently by separate
+					// threads Technically it is, but it does not matter, since the only value that can be written is
+					// "true"
+					Store<bool>(true, ptrs[idx] + ht.tuple_size);
+				}
 			}
-		}
 
-		// put new tuples in the result chunk if it has space, otherwise put new tuples in the buffer.
-		DataChunk *res_chunk;
-		idx_t base_count;
-		if (result.size() + result_count <= STANDARD_VECTOR_SIZE) {
-			base_count = result.size();
-			res_chunk = &result;
-		} else {
-			// init the buffer
-			if (buffer == nullptr) {
-				buffer = make_uniq<DataChunk>();
-				buffer->Initialize(Allocator::DefaultAllocator(), result.GetTypes());
+			// put new tuples in the result chunk if it has space, otherwise put new tuples in the buffer.
+			DataChunk *res_chunk;
+			idx_t base_count;
+			if (result.size() + result_count <= STANDARD_VECTOR_SIZE) {
+				base_count = result.size();
+				res_chunk = &result;
+			} else {
+				// init the buffer
+				if (buffer == nullptr) {
+					buffer = make_uniq<DataChunk>();
+					buffer->Initialize(Allocator::DefaultAllocator(), result.GetTypes());
+				}
+				res_chunk = buffer.get();
+				base_count = 0;
 			}
-			res_chunk = buffer.get();
-			base_count = 0;
+
+			// matches were found
+			// construct the result
+			// on the LHS, we create a slice using the result vector
+			res_chunk->ConcatenateSlice(left, result_vector, result_count, base_count, 0);
+
+			// on the RHS, we need to fetch the data from the hash table
+			for (idx_t i = 0; i < ht.build_types.size(); i++) {
+				auto &vector = res_chunk->data[left.ColumnCount() + i];
+				D_ASSERT(vector.GetType() == ht.build_types[i]);
+				GatherResult(vector, result_vector, result_count, i + ht.condition_types.size(), base_count);
+			}
+
+			AdvancePointers();
 		}
-
-		// matches were found
-		// construct the result
-		// on the LHS, we create a slice using the result vector
-		res_chunk->ConcatenateSlice(left, result_vector, result_count, base_count, 0);
-
-		// on the RHS, we need to fetch the data from the hash table
-		for (idx_t i = 0; i < ht.build_types.size(); i++) {
-			auto &vector = res_chunk->data[left.ColumnCount() + i];
-			D_ASSERT(vector.GetType() == ht.build_types[i]);
-			GatherResult(vector, result_vector, result_count, i + ht.condition_types.size(), base_count);
-		}
-
-		AdvancePointers();
 	}
 }
 
