@@ -25,8 +25,8 @@ public:
 
 		if (!result->HasError()) {
 			if (print) {
-				std::cout << result->ToBox(client_, config_) << "\n";
-				std::cout << ExplainQuery(query);
+				std::cerr << result->ToBox(client_, config_) << "\n";
+				std::cerr << ExplainQuery(query);
 			}
 			return std::move(result);
 		} else {
@@ -52,8 +52,8 @@ private:
 };
 
 int main() {
-	std::string db_name = "./imdb.db";
-	// std::string db_name = "third_party/imdb/data/imdb.db";
+	// std::string db_name = "./imdb.db";
+	std::string db_name = "third_party/imdb/data/imdb.db";
 	// nullptr means in-memory database.
 	duckdb::DuckDB db(db_name);
 	IMDBDatabase imdb(db);
@@ -88,12 +88,11 @@ int main() {
 		query_id[i] = i + 1;
 	double time;
 	for (auto id : query_id) {
-		std::string query = imdb::get_query(id);
-		auto result = imdb.Query(query, &time, false);
-
 		std::cerr << "-------------------------\n";
-		std::cerr << "Query " << id << " time: " << time << " s\n";
-		std::cerr << result->ToString() << "\n";
+		std::cerr << "Query " << id << "\n";
+		std::string query = imdb::get_query(id);
+		auto result = imdb.Query(query, &time, true);
+
 		duckdb::HashJoinProfiler::Get().PrintProfile();
 		duckdb::HashJoinProfiler::Get().Clear();
 	}

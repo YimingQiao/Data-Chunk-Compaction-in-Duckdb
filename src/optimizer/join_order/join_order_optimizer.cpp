@@ -25,26 +25,6 @@ static bool HasJoin(LogicalOperator *op) {
 	return false;
 }
 
-static void ReverseJoins(LogicalOperator *op) {
-	if (op->children.size() == 1)
-		ReverseJoins(op->children[0].get());
-	else if (op->children.size() == 2) {
-		ReverseJoins(op->children[0].get());
-		ReverseJoins(op->children[1].get());
-
-		if (op->type == LogicalOperatorType::LOGICAL_COMPARISON_JOIN &&
-		    op->children[0]->type == LogicalOperatorType::LOGICAL_GET &&
-		    op->children[1]->type == LogicalOperatorType::LOGICAL_GET) {
-			auto *join = static_cast<LogicalComparisonJoin *>(op);
-			std::swap(join->children[0], join->children[1]);
-			std::swap(join->left_projection_map, join->right_projection_map);
-			for (auto &cond : join->conditions) {
-				std::swap(cond.right, cond.left);
-			}
-		}
-	}
-}
-
 unique_ptr<LogicalOperator> JoinOrderOptimizer::Optimize(unique_ptr<LogicalOperator> plan,
                                                          optional_ptr<RelationStats> stats) {
 	// make sure query graph manager has not extracted a relation graph already
@@ -99,7 +79,6 @@ unique_ptr<LogicalOperator> JoinOrderOptimizer::Optimize(unique_ptr<LogicalOpera
 		RelationStatisticsHelper::CopyRelationStats(*stats, new_stats);
 	}
 
-	// ReverseJoins(new_logical_plan.get());
 	return new_logical_plan;
 }
 
