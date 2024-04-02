@@ -215,7 +215,8 @@ void Vector::Slice(const SelectionVector &sel, idx_t count, SelCache &cache) {
 	}
 }
 
-void Vector::ConcatenateSlice(Vector &other, const SelectionVector &sel, idx_t count, idx_t base_count) {
+void Vector::ConcatenateSlice(Vector &other, const SelectionVector &sel, idx_t count, idx_t base_count,
+                              SelCache &sel_cache) {
 	if (this->data != other.data) {
 		Reference(other);
 		Slice(sel, count);
@@ -231,9 +232,18 @@ void Vector::ConcatenateSlice(Vector &other, const SelectionVector &sel, idx_t c
 			}
 		} else if (other.GetVectorType() == VectorType::DICTIONARY_VECTOR) {
 			auto &current_sel = DictionaryVector::SelVector(other);
-			for (idx_t i = 0; i < count; i++) {
-				idx_t idx = sel.get_index(i);
-				dict_codes[base_count + i] = current_sel.get_index(idx);
+			auto target_data = current_sel.data();
+			auto entry = sel_cache.cache.find(target_data);
+
+			// we use a cache to reuse sel vectors.
+			if (entry != sel_cache.cache.end()) {
+				this->buffer = make_buffer<DictionaryBuffer>(entry->second->Cast<DictionaryBuffer>().GetSelVector());
+			} else {
+				for (idx_t i = 0; i < count; i++) {
+					idx_t idx = sel.get_index(i);
+					dict_codes[base_count + i] = current_sel.get_index(idx);
+				}
+				sel_cache.cache[target_data] = this->buffer;
 			}
 		}
 	}

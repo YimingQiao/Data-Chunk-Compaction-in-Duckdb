@@ -86,15 +86,9 @@ int main() {
 		    "SELECT student.stu_id, department.name, room.room_id, type.type,  "
 		    "FROM student, room, department, type "
 		    "WHERE student.stu_id = room.stu_id AND student.major_id = department.major_id AND room.type = type.type "
-		    "AND student.stu_id <= 1e7;";
+		    "AND student.stu_id <= 5e6;";
 
-		std::string outer_join =
-		    "EXPLAIN ANALYZE "
-		    "SELECT student.stu_id, student.major_id, "
-		    "FROM student FULL JOIN department ON student.major_id = department.major_id "
-		    "WHERE student.stu_id <= 4e1;";
-
-		ExecuteQuery(con, outer_join, 2, 1);  // the first time is warm-up
+		ExecuteQuery(con, query, 2, 1);  // the first time is warm-up
 	}
 }
 
