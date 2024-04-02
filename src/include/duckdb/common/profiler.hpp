@@ -11,7 +11,9 @@
 #include <filesystem>
 #include <fstream>
 #include <iostream>
+#include <mutex>
 #include <random>
+#include <unordered_map>
 #include <utility>
 
 #include "duckdb/common/chrono.hpp"
@@ -330,6 +332,31 @@ class HashJoinProfiler {
 public:
 	const static bool kEnableProfiling = false;
 
+private:
+	struct VectorizedJoinInfo {
+		// cardinality
+		uint64_t n_input_chunk;
+		uint64_t n_output_chunk;
+		vector<uint64_t> dist_input_size;
+		vector<uint64_t> dist_output_size;
+
+		// chunk factor
+		double sum_chunk_factors;
+		uint64_t n_chunk_factor;
+		vector<double> chunk_factors;
+
+		VectorizedJoinInfo()
+		    : n_input_chunk(0),
+		      n_output_chunk(0),
+		      dist_input_size(STANDARD_VECTOR_SIZE, 0),
+		      dist_output_size(STANDARD_VECTOR_SIZE, 0),
+		      sum_chunk_factors(0),
+		      n_chunk_factor(0) {
+		}
+	};
+	unordered_map<string, VectorizedJoinInfo> joins_;
+	std::mutex mtx_;
+
 public:
 	static HashJoinProfiler &Get() {
 		static HashJoinProfiler instance;
@@ -378,14 +405,10 @@ public:
 			double chunk_factor = info.sum_chunk_factors / info.n_chunk_factor;
 
 			std::cerr << join_name << "\tChunk Factor: " << chunk_factor << "\n";
-			std::cerr << "\tInput -- "
-			          << "#Tuple: " << total_input << "\t"
-			          << "#Chunk: " << info.n_input_chunk << "\t"
+			std::cerr << "\tInput -- " << "#Tuple: " << total_input << "\t" << "#Chunk: " << info.n_input_chunk << "\t"
 			          << "Avg Size: " << avg_input_tuple << "\n";
-			std::cerr << "\tOutput -- "
-			          << "#Tuple: " << total_output << "\t"
-			          << "#Chunk: " << info.n_output_chunk << "\t"
-			          << "Avg Size: " << avg_output_tuple << "\n";
+			std::cerr << "\tOutput -- " << "#Tuple: " << total_output << "\t" << "#Chunk: " << info.n_output_chunk
+			          << "\t" << "Avg Size: " << avg_output_tuple << "\n";
 			std::cerr << "\tData: [";
 			for (double factor : info.chunk_factors)
 				std::cerr << factor << ", ";
@@ -398,34 +421,9 @@ public:
 	}
 
 private:
-	struct VectorizedJoinInfo {
-		// cardinality
-		uint64_t n_input_chunk;
-		uint64_t n_output_chunk;
-		vector<uint64_t> dist_input_size;
-		vector<uint64_t> dist_output_size;
-
-		// chunk factor
-		double sum_chunk_factors;
-		uint64_t n_chunk_factor;
-		vector<double> chunk_factors;
-
-		VectorizedJoinInfo()
-		    : n_input_chunk(0),
-		      n_output_chunk(0),
-		      dist_input_size(STANDARD_VECTOR_SIZE, 0),
-		      dist_output_size(STANDARD_VECTOR_SIZE, 0),
-		      sum_chunk_factors(0),
-		      n_chunk_factor(0) {
-		}
-	};
-
 	VectorizedJoinInfo &GetJoinInfo(const string &address) {
 		lock_guard<mutex> lock(mtx_);
 		return joins_[address];
 	}
-
-	unordered_map<string, VectorizedJoinInfo> joins_;
-	std::mutex mtx_;
 };
 }  // namespace duckdb

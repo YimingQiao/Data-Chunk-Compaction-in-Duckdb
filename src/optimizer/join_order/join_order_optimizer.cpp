@@ -1,15 +1,15 @@
 #include "duckdb/optimizer/join_order/join_order_optimizer.hpp"
-#include "duckdb/optimizer/join_order/cost_model.hpp"
-#include "duckdb/optimizer/join_order/plan_enumerator.hpp"
-
-#include "duckdb/common/limits.hpp"
-#include "duckdb/common/pair.hpp"
-#include "duckdb/planner/expression/list.hpp"
-#include "duckdb/planner/expression_iterator.hpp"
-#include "duckdb/planner/operator/list.hpp"
 
 #include <algorithm>
 #include <cmath>
+
+#include "duckdb/common/limits.hpp"
+#include "duckdb/common/pair.hpp"
+#include "duckdb/optimizer/join_order/cost_model.hpp"
+#include "duckdb/optimizer/join_order/plan_enumerator.hpp"
+#include "duckdb/planner/expression/list.hpp"
+#include "duckdb/planner/expression_iterator.hpp"
+#include "duckdb/planner/operator/list.hpp"
 
 namespace duckdb {
 
@@ -25,9 +25,28 @@ static bool HasJoin(LogicalOperator *op) {
 	return false;
 }
 
+static void ReverseJoins(LogicalOperator *op) {
+	if (op->children.size() == 1)
+		ReverseJoins(op->children[0].get());
+	else if (op->children.size() == 2) {
+		ReverseJoins(op->children[0].get());
+		ReverseJoins(op->children[1].get());
+
+		if (op->type == LogicalOperatorType::LOGICAL_COMPARISON_JOIN &&
+		    op->children[0]->type == LogicalOperatorType::LOGICAL_GET &&
+		    op->children[1]->type == LogicalOperatorType::LOGICAL_GET) {
+			auto *join = static_cast<LogicalComparisonJoin *>(op);
+			std::swap(join->children[0], join->children[1]);
+			std::swap(join->left_projection_map, join->right_projection_map);
+			for (auto &cond : join->conditions) {
+				std::swap(cond.right, cond.left);
+			}
+		}
+	}
+}
+
 unique_ptr<LogicalOperator> JoinOrderOptimizer::Optimize(unique_ptr<LogicalOperator> plan,
                                                          optional_ptr<RelationStats> stats) {
-
 	// make sure query graph manager has not extracted a relation graph already
 	LogicalOperator *op = plan.get();
 
@@ -80,7 +99,8 @@ unique_ptr<LogicalOperator> JoinOrderOptimizer::Optimize(unique_ptr<LogicalOpera
 		RelationStatisticsHelper::CopyRelationStats(*stats, new_stats);
 	}
 
+	// ReverseJoins(new_logical_plan.get());
 	return new_logical_plan;
 }
 
-} // namespace duckdb
+}  // namespace duckdb

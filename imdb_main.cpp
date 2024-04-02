@@ -53,6 +53,7 @@ private:
 
 int main() {
 	std::string db_name = "./imdb.db";
+	// std::string db_name = "third_party/imdb/data/imdb.db";
 	// nullptr means in-memory database.
 	duckdb::DuckDB db(db_name);
 	IMDBDatabase imdb(db);
