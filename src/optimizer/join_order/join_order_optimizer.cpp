@@ -1,15 +1,15 @@
 #include "duckdb/optimizer/join_order/join_order_optimizer.hpp"
-#include "duckdb/optimizer/join_order/cost_model.hpp"
-#include "duckdb/optimizer/join_order/plan_enumerator.hpp"
-
-#include "duckdb/common/limits.hpp"
-#include "duckdb/common/pair.hpp"
-#include "duckdb/planner/expression/list.hpp"
-#include "duckdb/planner/expression_iterator.hpp"
-#include "duckdb/planner/operator/list.hpp"
 
 #include <algorithm>
 #include <cmath>
+
+#include "duckdb/common/limits.hpp"
+#include "duckdb/common/pair.hpp"
+#include "duckdb/optimizer/join_order/cost_model.hpp"
+#include "duckdb/optimizer/join_order/plan_enumerator.hpp"
+#include "duckdb/planner/expression/list.hpp"
+#include "duckdb/planner/expression_iterator.hpp"
+#include "duckdb/planner/operator/list.hpp"
 
 namespace duckdb {
 
@@ -27,7 +27,6 @@ static bool HasJoin(LogicalOperator *op) {
 
 unique_ptr<LogicalOperator> JoinOrderOptimizer::Optimize(unique_ptr<LogicalOperator> plan,
                                                          optional_ptr<RelationStats> stats) {
-
 	// make sure query graph manager has not extracted a relation graph already
 	LogicalOperator *op = plan.get();
 
@@ -83,4 +82,4 @@ unique_ptr<LogicalOperator> JoinOrderOptimizer::Optimize(unique_ptr<LogicalOpera
 	return new_logical_plan;
 }
 
-} // namespace duckdb
+}  // namespace duckdb

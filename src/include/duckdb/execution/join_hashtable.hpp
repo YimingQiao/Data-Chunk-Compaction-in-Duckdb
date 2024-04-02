@@ -76,6 +76,7 @@ public:
 
 		// buffer
 		unique_ptr<DataChunk> buffer;
+		SelectionVector target_vector;
 
 		explicit ScanStructure(JoinHashTable &ht, TupleDataChunkState &key_state);
 		//! Get the next batch of data from the scan structure

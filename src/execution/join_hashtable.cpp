@@ -389,7 +389,8 @@ ScanStructure::ScanStructure(JoinHashTable &ht_p, TupleDataChunkState &key_state
       sel_vector(STANDARD_VECTOR_SIZE),
       ht(ht_p),
       finished(false),
-      buffer(nullptr) {
+      buffer(nullptr),
+      target_vector(STANDARD_VECTOR_SIZE) {
 }
 
 void ScanStructure::Next(DataChunk &keys, DataChunk &left, DataChunk &result) {
@@ -505,14 +506,17 @@ void ScanStructure::GatherResult(Vector &result, const SelectionVector &result_v
 
 void ScanStructure::GatherResult(Vector &result, const SelectionVector &sel_vector, const idx_t count,
                                  const idx_t col_idx, const idx_t target_sel_start) {
-	GatherResult(result, SelectionVector(target_sel_start, count), sel_vector, count, col_idx);
+	for (idx_t i = 0; i < count; i++) {
+		target_vector.set_index(i, target_sel_start + i);
+	}
+	GatherResult(result, target_vector, sel_vector, count, col_idx);
 }
 
 void ScanStructure::NextInnerJoin(DataChunk &keys, DataChunk &left, DataChunk &result) {
 	D_ASSERT(result.ColumnCount() == left.ColumnCount() + ht.build_types.size());
 
+	SelectionVector result_vector(STANDARD_VECTOR_SIZE);
 	while (this->count > 0 && !HasBuffer()) {
-		SelectionVector result_vector(STANDARD_VECTOR_SIZE);
 		idx_t result_count = ScanInnerJoin(keys, result_vector);
 		if (result_count > 0) {
 			// yiqiao: I am not sure if it works.
