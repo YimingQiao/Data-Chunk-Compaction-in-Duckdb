@@ -85,14 +85,14 @@ int main() {
 	std::vector<size_t> query_id(114);
 	for (size_t i = 0; i < query_id.size(); ++i)
 		query_id[i] = i + 1;
-	//	std::vector<size_t> query_id {105};
 	double time;
 	for (auto id : query_id) {
 		std::string query = imdb::get_query(id);
-		imdb.Query(query, &time, false);
+		auto result = imdb.Query(query, &time, false);
 
 		std::cerr << "-------------------------\n";
 		std::cerr << "Query " << id << " time: " << time << " s\n";
+		std::cerr << result->ToString() << "\n";
 		duckdb::HashJoinProfiler::Get().PrintProfile();
 		duckdb::HashJoinProfiler::Get().Clear();
 	}
