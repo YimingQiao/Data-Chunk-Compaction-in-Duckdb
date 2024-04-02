@@ -313,8 +313,9 @@ void DataChunk::ConcatenateSlice(DataChunk &other, const SelectionVector &sel, i
                                  idx_t col_offset) {
 	D_ASSERT(other.ColumnCount() <= col_offset + ColumnCount());
 	this->count += count_p;
+	SelCache merge_cache;
 	for (idx_t c = 0; c < other.ColumnCount(); c++) {
-		data[col_offset + c].ConcatenateSlice(other.data[c], sel, count_p, base_count);
+		data[col_offset + c].ConcatenateSlice(other.data[c], sel, count_p, base_count, merge_cache);
 	}
 }
 
