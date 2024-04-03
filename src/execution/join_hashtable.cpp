@@ -397,7 +397,7 @@ void ScanStructure::Next(DataChunk &keys, DataChunk &left, DataChunk &result) {
 	if (finished) return;
 
 	result.Reset();
-	if (buffer && buffer->size() > 0) result.Swap(*buffer);
+	if (HasBuffer()) result.Swap(*buffer);
 
 	switch (ht.join_type) {
 		case JoinType::INNER:
@@ -505,10 +505,7 @@ void ScanStructure::GatherResult(Vector &result, const SelectionVector &result_v
 }
 
 void ScanStructure::GatherResult(Vector &result, const SelectionVector &sel_vector, const idx_t count,
-                                 const idx_t col_idx, const idx_t target_sel_start) {
-	for (idx_t i = 0; i < count; i++) {
-		target_vector.set_index(i, target_sel_start + i);
-	}
+                                 const idx_t col_idx) {
 	GatherResult(result, target_vector, sel_vector, count, col_idx);
 }
 
@@ -551,13 +548,15 @@ void ScanStructure::NextInnerJoin(DataChunk &keys, DataChunk &left, DataChunk &r
 			// matches were found
 			// construct the result
 			// on the LHS, we create a slice using the result vector
-			res_chunk->ConcatenateSlice(left, result_vector, result_count, base_count, 0);
+			res_chunk->ConcatenateSlice(left, result_vector, result_count, base_count);
 
 			// on the RHS, we need to fetch the data from the hash table
+			for (idx_t i = 0; i < count; i++)
+				target_vector.set_index(i, base_count + i);
 			for (idx_t i = 0; i < ht.build_types.size(); i++) {
 				auto &vector = res_chunk->data[left.ColumnCount() + i];
 				D_ASSERT(vector.GetType() == ht.build_types[i]);
-				GatherResult(vector, result_vector, result_count, i + ht.condition_types.size(), base_count);
+				GatherResult(vector, result_vector, result_count, i + ht.condition_types.size());
 			}
 
 			AdvancePointers();

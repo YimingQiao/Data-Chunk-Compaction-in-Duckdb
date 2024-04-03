@@ -229,7 +229,8 @@ void Vector::ConcatenateSlice(Vector &other, const SelectionVector &sel, idx_t c
 
 		if (other.GetVectorType() == VectorType::FLAT_VECTOR) {
 			for (idx_t i = 0; i < count; i++) {
-				dict_codes[base_count + i] = sel.get_index(i);
+				idx_t idx = sel.get_index(i);
+				dict_codes.set_index(base_count + i, idx);
 			}
 		} else if (other.GetVectorType() == VectorType::DICTIONARY_VECTOR) {
 			auto &current_sel = DictionaryVector::SelVector(other);
@@ -242,7 +243,7 @@ void Vector::ConcatenateSlice(Vector &other, const SelectionVector &sel, idx_t c
 			} else {
 				for (idx_t i = 0; i < count; i++) {
 					idx_t idx = sel.get_index(i);
-					dict_codes[base_count + i] = current_sel.get_index(idx);
+					dict_codes.set_index(base_count + i, current_sel.get_index(idx));
 				}
 				sel_cache.cache[target_data] = this->buffer;
 			}
