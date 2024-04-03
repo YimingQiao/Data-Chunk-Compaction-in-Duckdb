@@ -318,10 +318,11 @@ public:
 		// yiqiao: modify the #thread for hash table building
 		// const idx_t num_threads = TaskScheduler::GetScheduler(context).NumberOfThreads();
 		const idx_t active_threads = TaskScheduler::GetScheduler(context).NumberOfThreads();
-		const idx_t num_threads = ThreadScheduler::Get().GetThreadSetting("HT_FINALIZE", "HT_FINALIZE", false);
-		auto now = std::chrono::system_clock::now();
-		auto duration = now.time_since_epoch();
-		auto milliseconds = std::chrono::duration_cast<std::chrono::milliseconds>(duration).count() % 1000000;
+		idx_t num_threads = ThreadScheduler::Get().GetThreadSetting("HT_FINALIZE", "HT_FINALIZE", false);
+		num_threads = num_threads ? num_threads : active_threads;
+		//		auto now = std::chrono::system_clock::now();
+		//		auto duration = now.time_since_epoch();
+		//		auto milliseconds = std::chrono::duration_cast<std::chrono::milliseconds>(duration).count() % 1000000;
 		//		std::cerr << " [Open] Building Hash Table\t #task/#thread: " + std::to_string(num_threads) + "/" +
 		//		                 std::to_string(active_threads) + "\tTick: " + std::to_string(milliseconds) + "ms\n";
 

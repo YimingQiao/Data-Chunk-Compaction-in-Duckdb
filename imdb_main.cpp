@@ -21,7 +21,8 @@ public:
 		// Measure the time.
 		profiler_.Start();
 		auto result = connection_.Query(query);
-		if (time != nullptr) *time = profiler_.Elapsed();
+		profiler_.End();
+		if (time) *time = profiler_.Elapsed();
 
 		if (!result->HasError()) {
 			if (print) {
@@ -59,27 +60,6 @@ int main() {
 	IMDBDatabase imdb(db);
 
 	// ------------------------------------ Threads Settings -----------------------------------------------
-	{
-		auto &scheduler = duckdb::ThreadScheduler::Get();
-		using VecStr = std::vector<std::string>;
-		// [HashJoin]
-		{
-			// Build Hash Table
-			scheduler.SetThreadSetting(1, VecStr {"SEQ_SCAN ", "READ_PARQUET "}, VecStr {"HASH_JOIN"}, false);
-			scheduler.SetThreadSetting(1, VecStr {"HT_FINALIZE"}, VecStr {"HT_FINALIZE"}, false);
-			// Probe Hash Table
-			scheduler.SetThreadSetting(1, VecStr {"SEQ_SCAN ", "READ_PARQUET "}, VecStr {"EXPLAIN_ANALYZE"}, true);
-		}
-		// [BREAKER]
-		{
-			scheduler.SetThreadSetting(1, VecStr {"BREAKER"}, VecStr {""});
-			scheduler.SetThreadSetting(1, VecStr {"SEQ_SCAN ", "READ_PARQUET "}, VecStr {"BREAKER"});
-			scheduler.SetThreadSetting(1, VecStr {"SEQ_SCAN ", "READ_PARQUET "}, VecStr {"HASH_JOIN"}, true);
-		}
-
-		scheduler.SetThreadSetting(0, "CompactTuner", "CompactTuner");
-	}
-
 	imdb.Query("SET threads TO 1;", nullptr, false);
 
 	// ------------------------------------ Execution -----------------------------------------------
@@ -89,12 +69,18 @@ int main() {
 	double time;
 	for (auto id : query_id) {
 		std::cerr << "-------------------------\n";
-		std::cerr << "Query " << id << "\n";
 		std::string query = imdb::get_query(id);
-		auto result = imdb.Query(query, &time, true);
+		for (size_t i = 0; i < 6; ++i) {
+			auto result = imdb.Query(query, &time, false);
 
-		duckdb::HashJoinProfiler::Get().PrintProfile();
-		duckdb::HashJoinProfiler::Get().Clear();
+			if (i == 0)
+				std::cerr << "Result: " << result->GetValue(0, 0) << "\n";
+			else
+				std::cerr << "Query: " << id << " Time: " << time << "s\n";
+
+			duckdb::HashJoinProfiler::Get().PrintProfile();
+			duckdb::HashJoinProfiler::Get().Clear();
+		}
 	}
 
 	return 0;
