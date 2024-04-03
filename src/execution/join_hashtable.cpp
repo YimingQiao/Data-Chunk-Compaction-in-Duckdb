@@ -515,8 +515,8 @@ void ScanStructure::GatherResult(Vector &result, const SelectionVector &sel_vect
 void ScanStructure::NextInnerJoin(DataChunk &keys, DataChunk &left, DataChunk &result) {
 	D_ASSERT(result.ColumnCount() == left.ColumnCount() + ht.build_types.size());
 
-	SelectionVector result_vector(STANDARD_VECTOR_SIZE);
 	while (this->count > 0 && !HasBuffer()) {
+		SelectionVector result_vector(STANDARD_VECTOR_SIZE);
 		idx_t result_count = ScanInnerJoin(keys, result_vector);
 		if (result_count > 0) {
 			// yiqiao: I am not sure if it works.
