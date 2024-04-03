@@ -8,10 +8,15 @@
 
 #pragma once
 
+#include <algorithm>
+#include <atomic>
+#include <cstdint>
 #include <filesystem>
 #include <fstream>
 #include <iostream>
+#include <mutex>
 #include <random>
+#include <unordered_map>
 #include <utility>
 
 #include "duckdb/common/chrono.hpp"
@@ -64,18 +69,18 @@ public:
 	}
 
 	void InsertStatRecord(string name, double value) {
-		InsertStatRecord(name, size_t(value * 1e9));
+		InsertStatRecord(name, uint64_t(value * 1e9));
 	}
 
-	inline void InsertStatRecord(string name, size_t value) {
+	inline void InsertStatRecord(string name, uint64_t value) {
 		if (kEnableProfiling) {
-			lock_guard<mutex> lock(mtx);
+			std::lock_guard<std::mutex> lock(mtx);
 			values_[name] += value;
 			calling_times_[name] += 1;
 		}
 	}
 
-	void InsertHTRecord(string name, size_t tuple_sz, size_t point_table_sz, size_t num_terms) {
+	void InsertHTRecord(string name, uint64_t tuple_sz, uint64_t point_table_sz, uint64_t num_terms) {
 		if (kEnableProfiling) {
 			std::lock_guard<std::mutex> lock(mtx);
 			if (ht_records_.count(name) == 0) {
@@ -92,7 +97,7 @@ public:
 	}
 
 	void PrintResults() const {
-		lock_guard<mutex> lock(mtx);
+		std::lock_guard<std::mutex> lock(mtx);
 
 		// -------------------------------- Print Timing Results --------------------------------
 		std::vector<std::string> keys;
@@ -110,7 +115,7 @@ public:
 					continue;
 				}
 				double time = values_.at(key) / double(1e9);
-				size_t calling_times = calling_times_.at(key);
+				uint64_t calling_times = calling_times_.at(key);
 				double avg = time / calling_times;
 
 				std::cerr << "Total: " << time << " s\tCalls: " << calling_times << "\tAvg: " << avg << " s\t" << key
@@ -119,8 +124,8 @@ public:
 			std::cerr << "-------\n";
 			for (const auto &key : keys) {
 				if (key.find("#Tuple") != std::string::npos) {
-					size_t total_tuples = values_.at(key);
-					size_t calling_times = calling_times_.at(key);
+					uint64_t total_tuples = values_.at(key);
+					uint64_t calling_times = calling_times_.at(key);
 					double avg = total_tuples / double(calling_times);
 
 					std::cerr << "Total: " << total_tuples << "\tCalls: " << calling_times << "\tAvg: " << avg << "\t"
@@ -157,17 +162,18 @@ public:
 
 private:
 	struct HTInfo {
-		size_t tuple_size;
-		size_t point_table_size;
-		size_t num_terms;
+		uint64_t tuple_size;
+		uint64_t point_table_size;
+		uint64_t num_terms;
 
-		HTInfo(size_t ts = 0, size_t pts = 0, size_t nt = 0) : tuple_size(ts), point_table_size(pts), num_terms(nt) {
+		HTInfo(uint64_t ts = 0, uint64_t pts = 0, uint64_t nt = 0)
+		    : tuple_size(ts), point_table_size(pts), num_terms(nt) {
 		}
 	};
 
-	unordered_map<string, size_t> values_;
-	unordered_map<string, size_t> calling_times_;
-	unordered_map<string, HTInfo> ht_records_;
+	std::unordered_map<string, uint64_t> values_;
+	std::unordered_map<string, uint64_t> calling_times_;
+	std::unordered_map<string, HTInfo> ht_records_;
 	mutable std::mutex mtx;
 };
 
@@ -179,7 +185,7 @@ public:
 	}
 
 	void StartStage(const string &stage_name) {
-		lock_guard<mutex> lock(mtx_);
+		std::lock_guard<std::mutex> lock(mtx_);
 		if (!cur_stage_.empty() && stage_name == cur_stage_) {
 			// already in this stage
 			return;
@@ -189,7 +195,7 @@ public:
 	}
 
 	void EndStage(const string &stage_name) {
-		lock_guard<mutex> lock(mtx_);
+		std::lock_guard<std::mutex> lock(mtx_);
 		if (stage_name != cur_stage_) {
 			// not the same stage
 			return;
@@ -199,7 +205,7 @@ public:
 		cur_stage_.clear();
 	}
 
-	unordered_map<string, double> &GetStageTimings() {
+	std::unordered_map<string, double> &GetStageTimings() {
 		if (!cur_stage_.empty()) {
 			EndStage(cur_stage_);
 		}
@@ -220,8 +226,8 @@ public:
 
 private:
 	// [stage_name] -> total time (ns)
-	unordered_map<string, double> stage_timings_;
-	mutex mtx_;
+	std::unordered_map<string, double> stage_timings_;
+	std::mutex mtx_;
 	Profiler timer_;
 	string cur_stage_;
 };
@@ -236,16 +242,16 @@ public:
 		return instance;
 	}
 
-	inline void InsertRecord(string name, size_t key, double value) {
-		InsertRecord(std::move(name), key, size_t(value * 1e9));
+	inline void InsertRecord(string name, uint64_t key, double value) {
+		InsertRecord(std::move(name), key, uint64_t(value * 1e9));
 	}
 
-	inline void InsertRecord(string name, size_t key, size_t value) {
+	inline void InsertRecord(string name, uint64_t key, uint64_t value) {
 		if (kEnableProfiling) {
-			D_ASSERT(key <= STANDARD_VECTOR_SIZE);
+			D_ASSERT(key <= 2048);
 
 			if (hists_.count(name) == 0) {
-				lock_guard<std::mutex> lock(mutex_);
+				std::lock_guard<std::mutex> lock(mutex_);
 				hists_[name] = Histogram();
 			}
 
@@ -264,8 +270,8 @@ public:
 
 				std::cerr << "-------\n";
 				std::cerr << name << '\n';
-				for (size_t i = 1; i <= STANDARD_VECTOR_SIZE; ++i) {
-					if (hist.cnt_[i] > 0) {
+				for (uint64_t i = 1; i <= 2048; ++i) {
+					if (hist.cnt_[i].load() > 0) {
 						std::cerr << i << ": " << hist.values_[i] / double(1e3) / hist.cnt_[i] << " us\t"
 						          << hist.cnt_[i] << '\n';
 					}
@@ -291,7 +297,7 @@ public:
 				string file_name = folder_name + "/" + name + ".csv";
 				std::ofstream out(file_name);
 				out << "key, value, cnt\n";
-				for (size_t i = 1; i <= STANDARD_VECTOR_SIZE; ++i) {
+				for (uint64_t i = 1; i <= 2048; ++i) {
 					if (hist.cnt_[i] == 0) continue;
 					out << i << "," << hist.values_[i] / double(1e3) / hist.cnt_[i] << "," << hist.cnt_[i] << "\n";
 				}
@@ -305,20 +311,20 @@ public:
 	}
 
 private:
-	inline size_t RandomInteger() {
+	inline uint64_t RandomInteger() {
 		return integers(gen_);
 	}
 
 	struct Histogram {
-		vector<atomic<size_t>> values_;  // in ns
-		vector<atomic<size_t>> cnt_;
+		std::vector<std::atomic<uint64_t>> values_;  // in ns
+		std::vector<std::atomic<uint64_t>> cnt_;
 
-		Histogram() : values_(STANDARD_VECTOR_SIZE + 1), cnt_(STANDARD_VECTOR_SIZE + 1) {
+		Histogram() : values_(2048 + 1), cnt_(2048 + 1) {
 		}
 	};
 
-	mutex mutex_;
-	unordered_map<string, Histogram> hists_;
+	std::mutex mutex_;
+	std::unordered_map<string, Histogram> hists_;
 
 	// random
 	std::mt19937 gen_;
@@ -336,7 +342,7 @@ public:
 		return instance;
 	}
 
-	void InputChunk(size_t n_tuple, const string &join_addr) {
+	void InputChunk(uint64_t n_tuple, const string &join_addr) {
 		if (!kEnableProfiling) return;
 		if (n_tuple == 0) return;
 
@@ -346,7 +352,7 @@ public:
 		++info.dist_input_size[n_tuple - 1];
 	}
 
-	void OutputChunk(size_t n_input, size_t n_output, const string &join_addr) {
+	void OutputChunk(uint64_t n_input, uint64_t n_output, const string &join_addr) {
 		if (!kEnableProfiling) return;
 		if (n_output == 0) return;
 
@@ -369,7 +375,7 @@ public:
 			const auto &info = pair.second;
 
 			uint64_t total_input = 0, total_output = 0;
-			for (size_t i = 0; i < STANDARD_VECTOR_SIZE; ++i) {
+			for (uint64_t i = 0; i < 2048; ++i) {
 				total_input += (i + 1) * info.dist_input_size[i];
 				total_output += (i + 1) * info.dist_output_size[i];
 			}
@@ -378,14 +384,10 @@ public:
 			double chunk_factor = info.sum_chunk_factors / info.n_chunk_factor;
 
 			std::cerr << join_name << "\tChunk Factor: " << chunk_factor << "\n";
-			std::cerr << "\tInput -- "
-			          << "#Tuple: " << total_input << "\t"
-			          << "#Chunk: " << info.n_input_chunk << "\t"
+			std::cerr << "\tInput -- " << "#Tuple: " << total_input << "\t" << "#Chunk: " << info.n_input_chunk << "\t"
 			          << "Avg Size: " << avg_input_tuple << "\n";
-			std::cerr << "\tOutput -- "
-			          << "#Tuple: " << total_output << "\t"
-			          << "#Chunk: " << info.n_output_chunk << "\t"
-			          << "Avg Size: " << avg_output_tuple << "\n";
+			std::cerr << "\tOutput -- " << "#Tuple: " << total_output << "\t" << "#Chunk: " << info.n_output_chunk
+			          << "\t" << "Avg Size: " << avg_output_tuple << "\n";
 			std::cerr << "\tData: [";
 			for (double factor : info.chunk_factors)
 				std::cerr << factor << ", ";
@@ -402,30 +404,30 @@ private:
 		// cardinality
 		uint64_t n_input_chunk;
 		uint64_t n_output_chunk;
-		vector<uint64_t> dist_input_size;
-		vector<uint64_t> dist_output_size;
+		std::vector<uint64_t> dist_input_size;
+		std::vector<uint64_t> dist_output_size;
 
 		// chunk factor
 		double sum_chunk_factors;
 		uint64_t n_chunk_factor;
-		vector<double> chunk_factors;
+		std::vector<double> chunk_factors;
 
 		VectorizedJoinInfo()
 		    : n_input_chunk(0),
 		      n_output_chunk(0),
-		      dist_input_size(STANDARD_VECTOR_SIZE, 0),
-		      dist_output_size(STANDARD_VECTOR_SIZE, 0),
+		      dist_input_size(2048, 0),
+		      dist_output_size(2048, 0),
 		      sum_chunk_factors(0),
 		      n_chunk_factor(0) {
 		}
 	};
 
 	VectorizedJoinInfo &GetJoinInfo(const string &address) {
-		lock_guard<mutex> lock(mtx_);
+		std::lock_guard<std::mutex> lock(mtx_);
 		return joins_[address];
 	}
 
-	unordered_map<string, VectorizedJoinInfo> joins_;
+	std::unordered_map<string, VectorizedJoinInfo> joins_;
 	std::mutex mtx_;
 };
 }  // namespace duckdb
