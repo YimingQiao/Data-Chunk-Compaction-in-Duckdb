@@ -344,3 +344,5 @@ extension/extension_config_local.cmake
 
 # extension_external dir
 extension_external
+/bench_logs/
+/run_bench.py
