@@ -41,7 +41,8 @@ PhysicalHashJoin::PhysicalHashJoin(LogicalOperator &op, unique_ptr<PhysicalOpera
 	}
 
 	// yiqiao: compacting threshold setting
-	auto_tuning = ThreadScheduler::Get().GetThreadSetting("CompactTuner", "CompactTuner", false);
+	// auto_tuning = ThreadScheduler::Get().GetThreadSetting("CompactTuner", "CompactTuner", false);
+	auto_tuning = true;
 	if (auto_tuning) {
 		CompactTuner::Get().Initialize(size_t(this));
 	}
