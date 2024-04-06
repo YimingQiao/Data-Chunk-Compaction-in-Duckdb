@@ -47,8 +47,8 @@ void Connection::Interrupt() {
 	context->Interrupt();
 }
 
-void Connection::EnableProfiling() {
-	context->EnableProfiling();
+void Connection::EnableProfiling(bool disable_output) {
+	context->EnableProfiling(disable_output);
 }
 
 void Connection::DisableProfiling() {

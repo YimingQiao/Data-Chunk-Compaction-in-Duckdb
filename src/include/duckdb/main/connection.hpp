@@ -53,7 +53,7 @@ public:
 	DUCKDB_API void Interrupt();
 
 	//! Enable query profiling
-	DUCKDB_API void EnableProfiling();
+	DUCKDB_API void EnableProfiling(bool disable_output = false);
 	//! Disable query profiling
 	DUCKDB_API void DisableProfiling();
 
@@ -235,4 +235,4 @@ private:
 	}
 };
 
-} // namespace duckdb
+}  // namespace duckdb
