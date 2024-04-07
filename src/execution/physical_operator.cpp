@@ -264,12 +264,6 @@ OperatorResultType CompactingPhysicalOperator::Execute(ExecutionContext &context
 	}
 	// TODO chunk size of 0 should not result in a cache being created!
 	if (chunk.size() < compact_threshold) {
-		std::string name;
-		for (size_t i = 0; i < chunk.size() * chunk.ColumnCount(); ++i) {
-			name += "-----------";
-		}
-		BeeProfiler::Get().InsertStatRecord(name, 0.0);
-
 		// we have filtered out a significant amount of tuples
 		// add this chunk to the cache and continue
 		if (!state.cached_chunk) {
