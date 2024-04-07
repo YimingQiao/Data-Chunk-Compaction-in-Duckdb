@@ -378,11 +378,14 @@ unique_ptr<BenchmarkState> InterpretedBenchmark::Initialize(BenchmarkConfigurati
 		result = std::move(result->next);
 	}
 	if (config.profile_info == BenchmarkProfileInfo::NORMAL) {
-		state->con.Query("PRAGMA enable_profiling");
+		// yiqiao: I do not want it to output logs.
+		// state->con.Query("PRAGMA enable_profiling");
+		state->con.EnableProfiling(true);
 	} else if (config.profile_info == BenchmarkProfileInfo::DETAILED) {
 		state->con.Query("PRAGMA enable_profiling");
 		state->con.Query("PRAGMA profiling_mode='detailed'");
 	}
+	state->con.EnableProfiling();
 	return std::move(state);
 }
 
