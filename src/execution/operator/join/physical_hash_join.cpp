@@ -207,9 +207,6 @@ SinkResultType PhysicalHashJoin::Sink(ExecutionContext &context, DataChunk &chun
 	auto &lstate = input.local_state.Cast<HashJoinLocalSinkState>();
 	auto &sink = input.global_state.Cast<HashJoinGlobalSinkState>();
 
-	Profiler profiler;
-	profiler.Start();
-
 	// resolve the join keys for the right chunk
 	lstate.join_keys.Reset();
 	lstate.build_executor.Execute(chunk, lstate.join_keys);
@@ -238,9 +235,6 @@ SinkResultType PhysicalHashJoin::Sink(ExecutionContext &context, DataChunk &chun
 SinkCombineResultType PhysicalHashJoin::Combine(ExecutionContext &context, OperatorSinkCombineInput &input) const {
 	auto &gstate = input.global_state.Cast<HashJoinGlobalSinkState>();
 	auto &lstate = input.local_state.Cast<HashJoinLocalSinkState>();
-
-	Profiler profiler;
-	profiler.Start();
 
 	if (lstate.hash_table) {
 		lstate.hash_table->GetSinkCollection().FlushAppendState(lstate.append_state);
@@ -412,9 +406,6 @@ SinkFinalizeType PhysicalHashJoin::Finalize(Pipeline &pipeline, Event &event, Cl
                                             OperatorSinkFinalizeInput &input) const {
 	auto &sink = input.global_state.Cast<HashJoinGlobalSinkState>();
 	auto &ht = *sink.hash_table;
-
-	Profiler profiler;
-	profiler.Start();
 
 	sink.external = ht.RequiresExternalJoin(context.config, sink.local_hash_tables);
 	if (sink.external) {
@@ -962,9 +953,6 @@ SourceResultType PhysicalHashJoin::GetData(ExecutionContext &context, DataChunk 
 	auto &gstate = input.global_state.Cast<HashJoinGlobalSourceState>();
 	auto &lstate = input.local_state.Cast<HashJoinLocalSourceState>();
 	sink.scanned_data = true;
-
-	Profiler profiler;
-	profiler.Start();
 
 	if (!sink.external && !IsRightOuterJoin(join_type)) {
 		return SourceResultType::FINISHED;
