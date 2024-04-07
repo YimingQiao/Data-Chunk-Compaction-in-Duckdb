@@ -280,6 +280,10 @@ OperatorResultType CompactingPhysicalOperator::Execute(ExecutionContext &context
 		state.cached_chunk->Append(chunk);
 		if (state.cached_chunk->size() >= (STANDARD_VECTOR_SIZE - compact_threshold) ||
 		    child_result == OperatorResultType::FINISHED) {
+			// chunk cache full: return it
+			//			chunk.Reset();
+			//			state.cached_chunk->Copy(chunk);
+			//			state.cached_chunk->Reset();
 			chunk.Move(*state.cached_chunk);
 			state.cached_chunk->Initialize(Allocator::Get(context.client), chunk.GetTypes());
 			return child_result;
