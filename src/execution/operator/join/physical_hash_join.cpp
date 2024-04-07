@@ -232,9 +232,6 @@ SinkResultType PhysicalHashJoin::Sink(ExecutionContext &context, DataChunk &chun
 		lstate.build_chunk.SetCardinality(chunk.size());
 		ht.Build(lstate.append_state, lstate.join_keys, lstate.build_chunk);
 	}
-
-	string name = "[HashJoin - (1.1) Partition - " + sink.ht_name + "]";
-	BeeProfiler::Get().InsertStatRecord(name, profiler.Elapsed());
 	return SinkResultType::NEED_MORE_INPUT;
 }
 
@@ -253,9 +250,6 @@ SinkCombineResultType PhysicalHashJoin::Combine(ExecutionContext &context, Opera
 	auto &client_profiler = QueryProfiler::Get(context.client);
 	context.thread.profiler.Flush(*this, lstate.build_executor, "build_executor", 1);
 	client_profiler.Flush(context.thread.profiler);
-
-	string name = "[HashJoin - (1.2) Combine Partition - " + gstate.ht_name + "]";
-	BeeProfiler::Get().InsertStatRecord(name, profiler.Elapsed());
 
 	return SinkCombineResultType::FINISHED;
 }
@@ -276,24 +270,9 @@ public:
 	}
 
 	TaskExecutionResult ExecuteTask(TaskExecutionMode mode) override {
-		Profiler profiler;
-		profiler.Start();
-
 		sink.hash_table->Finalize(chunk_idx_from, chunk_idx_to, parallel);
 		event->FinishTask();
 
-		auto &ht = sink.hash_table;
-		const void *address = static_cast<const void *>(ht.get());
-		std::stringstream ss;
-		ss << address;
-		string name = "[HashJoin - (2) Build Table - ";
-		for (size_t i = 0; i < ht->conditions.size(); ++i) {
-			auto &con = ht->conditions[i];
-			name += con.left->GetName() + "=" + con.right->GetName();
-			if (i != ht->conditions.size() - 1) name += ", ";
-		}
-		name += " - " + ss.str() + "]";
-		BeeProfiler::Get().InsertStatRecord(name, profiler.Elapsed());
 		return TaskExecutionResult::TASK_FINISHED;
 	}
 
@@ -477,8 +456,6 @@ SinkFinalizeType PhysicalHashJoin::Finalize(Pipeline &pipeline, Event &event, Cl
 	}
 	sink.finalized = true;
 
-	string name = "[HashJoin - (1.3) Finalize Partition - " + sink.ht_name + "]";
-	BeeProfiler::Get().InsertStatRecord(name, profiler.Elapsed());
 	if (ht.Count() == 0 && EmptyResultIfRHSIsEmpty()) {
 		return SinkFinalizeType::NO_OUTPUT_POSSIBLE;
 	}
@@ -529,15 +506,6 @@ unique_ptr<OperatorState> PhysicalHashJoin::GetOperatorState(ExecutionContext &c
 		sink.InitializeProbeSpill();
 	}
 
-	// yiqiao: record the size of hash table
-	auto &ht = sink.hash_table;
-	BeeProfiler::Get().InsertHTRecord("<Hash Join - " + sink.ht_name + ">", ht->SizeInBytes(),
-	                                  ht->PointerTableSize(ht->Count()), sink.hash_table->Count());
-
-	// yiqiao: building ends, then start to probe
-	CatProfiler::Get().EndStage("[HashJoin - Build Hash Table]");
-	CatProfiler::Get().StartStage("[HashJoin - Probe Hash Table]");
-
 	return std::move(state);
 }
 
@@ -547,11 +515,6 @@ OperatorResultType PhysicalHashJoin::ExecuteInternal(ExecutionContext &context, 
 	auto &sink = sink_state->Cast<HashJoinGlobalSinkState>();
 	D_ASSERT(sink.finalized);
 	D_ASSERT(!sink.scanned_data);
-
-	// get name of this hash join
-	string &name = sink.join_probe_name;
-	Profiler profiler;
-	profiler.Start();
 
 	// some initialization for external hash join
 	if (sink.external && !state.initialized) {
@@ -563,37 +526,28 @@ OperatorResultType PhysicalHashJoin::ExecuteInternal(ExecutionContext &context, 
 	}
 
 	if (sink.hash_table->Count() == 0 && EmptyResultIfRHSIsEmpty()) {
-		BeeProfiler::Get().InsertStatRecord(name, profiler.Elapsed());
 		return OperatorResultType::FINISHED;
 	}
 
 	if (sink.perfect_join_executor) {
 		D_ASSERT(!sink.external);
-		BeeProfiler::Get().InsertStatRecord(name, profiler.Elapsed());
 		return sink.perfect_join_executor->ProbePerfectHashTable(context, input, chunk, *state.perfect_hash_join_state);
 	}
 
 	if (state.scan_structure) {
 		// still have elements remaining (i.e. we got >STANDARD_VECTOR_SIZE elements in the previous probe)
 		state.scan_structure->Next(state.join_keys, input, chunk);
-		HashJoinProfiler::Get().OutputChunk(input.size(), chunk.size(), name);
 
 		if (chunk.size() > 0) {
-			BeeProfiler::Get().InsertStatRecord(name + " - Have Remaining Elements #Tuple", chunk.size());
-			BeeProfiler::Get().InsertStatRecord(name + " - Have Remaining Elements", profiler.Elapsed());
 			return OperatorResultType::HAVE_MORE_OUTPUT;
 		}
 		state.scan_structure = nullptr;
-
-		BeeProfiler::Get().InsertStatRecord(name + " - No Remaining", profiler.Elapsed());
 		return OperatorResultType::NEED_MORE_INPUT;
 	}
 
 	// probe the HT
 	if (sink.hash_table->Count() == 0) {
 		ConstructEmptyJoinResult(sink.hash_table->join_type, sink.hash_table->has_null, input, chunk);
-
-		BeeProfiler::Get().InsertStatRecord(name, profiler.Elapsed());
 		return OperatorResultType::NEED_MORE_INPUT;
 	}
 
@@ -607,13 +561,8 @@ OperatorResultType PhysicalHashJoin::ExecuteInternal(ExecutionContext &context, 
 		                                                      *sink.probe_spill, state.spill_state, state.spill_chunk);
 	} else {
 		state.scan_structure = sink.hash_table->Probe(state.join_keys, state.join_key_state);
-		HashJoinProfiler::Get().InputChunk(input.size(), name);
 	}
 	state.scan_structure->Next(state.join_keys, input, chunk);
-	HashJoinProfiler::Get().OutputChunk(input.size(), chunk.size(), name);
-
-	BeeProfiler::Get().InsertStatRecord(name + " #Tuple", chunk.size());
-	BeeProfiler::Get().InsertStatRecord(name, profiler.Elapsed());
 	return OperatorResultType::HAVE_MORE_OUTPUT;
 }
 
