@@ -31,6 +31,10 @@ public:
 	      n_start_sampling_(0) {
 	}
 
+	~MultiArmedBandit() {
+		// Print({0, 32, 128, 512});
+	}
+
 	// Selects an arm based on the UCB1 algorithm
 	inline size_t SelectArm() {
 		std::lock_guard<std::mutex> lock(mutex_);
@@ -91,6 +95,7 @@ public:
 	}
 
 	inline void Print(const std::vector<size_t> &values) {
+		std::cerr << "--------------------------------------------\n";
 		for (size_t i = 0; i < est_rewards_.size(); i++) {
 			std::cerr << " [PARAMETERS] Estimated reward for arm " << values[i] << " is " << to_string(est_rewards_[i])
 			          << " - Sampling times is " << n_select_[i] << "\n";
