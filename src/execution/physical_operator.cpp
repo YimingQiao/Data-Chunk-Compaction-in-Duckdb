@@ -251,10 +251,6 @@ OperatorResultType CompactingPhysicalOperator::Execute(ExecutionContext &context
                                                        GlobalOperatorState &gstate, OperatorState &state_p) const {
 	auto &state = state_p.Cast<CachingOperatorState>();
 
-	string address = to_string(size_t(this));
-	Profiler profiler_exec;
-	profiler_exec.Start();
-
 	// Execute child operator
 	auto child_result = ExecuteInternal(context, input, chunk, gstate, state);
 
@@ -268,12 +264,6 @@ OperatorResultType CompactingPhysicalOperator::Execute(ExecutionContext &context
 	}
 	// TODO chunk size of 0 should not result in a cache being created!
 	if (chunk.size() < compact_threshold) {
-		std::string name;
-		for (size_t i = 0; i < chunk.size() * chunk.ColumnCount(); ++i) {
-			name += "-----------";
-		}
-		BeeProfiler::Get().InsertStatRecord(name, 0.0);
-
 		// we have filtered out a significant amount of tuples
 		// add this chunk to the cache and continue
 		if (!state.cached_chunk) {
