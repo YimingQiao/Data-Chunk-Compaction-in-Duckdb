@@ -114,9 +114,9 @@ unique_ptr<DataChunk> ClientContext::FetchInternal(ClientContextLock &lock, Exec
 		result.SetError(PreservedError(ex));
 	} catch (std::exception &ex) {
 		result.SetError(PreservedError(ex));
-	} catch (...) { // LCOV_EXCL_START
+	} catch (...) {  // LCOV_EXCL_START
 		result.SetError(PreservedError("Unhandled exception in FetchInternal"));
-	} // LCOV_EXCL_STOP
+	}  // LCOV_EXCL_STOP
 	CleanupInternal(lock, &result, invalidate_query);
 	return nullptr;
 }
@@ -196,9 +196,9 @@ PreservedError ClientContext::EndQueryInternal(ClientContextLock &lock, bool suc
 		error = PreservedError(ex);
 	} catch (std::exception &ex) {
 		error = PreservedError(ex);
-	} catch (...) { // LCOV_EXCL_START
+	} catch (...) {  // LCOV_EXCL_START
 		error = PreservedError("Unhandled exception!");
-	} // LCOV_EXCL_STOP
+	}  // LCOV_EXCL_STOP
 	return error;
 }
 
@@ -298,9 +298,9 @@ static bool IsExplainAnalyze(SQLStatement *statement) {
 	return explain.explain_type == ExplainType::EXPLAIN_ANALYZE;
 }
 
-shared_ptr<PreparedStatementData>
-ClientContext::CreatePreparedStatement(ClientContextLock &lock, const string &query, unique_ptr<SQLStatement> statement,
-                                       optional_ptr<case_insensitive_map_t<Value>> values) {
+shared_ptr<PreparedStatementData> ClientContext::CreatePreparedStatement(
+    ClientContextLock &lock, const string &query, unique_ptr<SQLStatement> statement,
+    optional_ptr<case_insensitive_map_t<Value>> values) {
 	StatementType statement_type = statement->type;
 	auto result = make_shared<PreparedStatementData>(statement_type);
 
@@ -451,9 +451,9 @@ PendingExecutionResult ClientContext::ExecuteTaskInternal(ClientContextLock &loc
 		result.SetError(PreservedError(ex));
 	} catch (std::exception &ex) {
 		result.SetError(PreservedError(ex));
-	} catch (...) { // LCOV_EXCL_START
+	} catch (...) {  // LCOV_EXCL_START
 		result.SetError(PreservedError("Unhandled exception in ExecuteTaskInternal"));
-	} // LCOV_EXCL_STOP
+	}  // LCOV_EXCL_STOP
 	EndQueryInternal(lock, false, true);
 	return PendingExecutionResult::EXECUTION_ERROR;
 }
@@ -651,48 +651,48 @@ unique_ptr<PendingQueryResult> ClientContext::PendingStatementOrPreparedStatemen
 		// this way we verify that the copy correctly copies all properties
 		auto copied_statement = statement->Copy();
 		switch (statement->type) {
-		case StatementType::SELECT_STATEMENT: {
-			// in case this is a select query, we verify the original statement
-			PreservedError error;
-			try {
-				error = VerifyQuery(lock, query, std::move(statement));
-			} catch (const Exception &ex) {
-				error = PreservedError(ex);
-			} catch (std::exception &ex) {
-				error = PreservedError(ex);
+			case StatementType::SELECT_STATEMENT: {
+				// in case this is a select query, we verify the original statement
+				PreservedError error;
+				try {
+					error = VerifyQuery(lock, query, std::move(statement));
+				} catch (const Exception &ex) {
+					error = PreservedError(ex);
+				} catch (std::exception &ex) {
+					error = PreservedError(ex);
+				}
+				if (error) {
+					// error in verifying query
+					return make_uniq<PendingQueryResult>(error);
+				}
+				statement = std::move(copied_statement);
+				break;
 			}
-			if (error) {
-				// error in verifying query
-				return make_uniq<PendingQueryResult>(error);
-			}
-			statement = std::move(copied_statement);
-			break;
-		}
 #ifndef DUCKDB_ALTERNATIVE_VERIFY
-		case StatementType::COPY_STATEMENT:
-		case StatementType::INSERT_STATEMENT:
-		case StatementType::DELETE_STATEMENT:
-		case StatementType::UPDATE_STATEMENT: {
-			Parser parser;
-			PreservedError error;
-			try {
-				parser.ParseQuery(statement->ToString());
-			} catch (const Exception &ex) {
-				error = PreservedError(ex);
-			} catch (std::exception &ex) {
-				error = PreservedError(ex);
+			case StatementType::COPY_STATEMENT:
+			case StatementType::INSERT_STATEMENT:
+			case StatementType::DELETE_STATEMENT:
+			case StatementType::UPDATE_STATEMENT: {
+				Parser parser;
+				PreservedError error;
+				try {
+					parser.ParseQuery(statement->ToString());
+				} catch (const Exception &ex) {
+					error = PreservedError(ex);
+				} catch (std::exception &ex) {
+					error = PreservedError(ex);
+				}
+				if (error) {
+					// error in verifying query
+					return make_uniq<PendingQueryResult>(error);
+				}
+				statement = std::move(parser.statements[0]);
+				break;
 			}
-			if (error) {
-				// error in verifying query
-				return make_uniq<PendingQueryResult>(error);
-			}
-			statement = std::move(parser.statements[0]);
-			break;
-		}
 #endif
-		default:
-			statement = std::move(copied_statement);
-			break;
+			default:
+				statement = std::move(copied_statement);
+				break;
 		}
 	}
 	return PendingStatementOrPreparedStatement(lock, query, std::move(statement), prepared, parameters);
@@ -906,11 +906,11 @@ void ClientContext::Interrupt() {
 	interrupted = true;
 }
 
-void ClientContext::EnableProfiling() {
+void ClientContext::EnableProfiling(bool disable_output) {
 	auto lock = LockContext();
 	auto &config = ClientConfig::GetConfig(*this);
 	config.enable_profiler = true;
-	config.emit_profiler_output = true;
+	config.emit_profiler_output = disable_output;
 }
 
 void ClientContext::DisableProfiling() {
@@ -1183,4 +1183,4 @@ bool ClientContext::ExecutionIsFinished() {
 	return active_query->executor->ExecutionIsFinished();
 }
 
-} // namespace duckdb
+}  // namespace duckdb
