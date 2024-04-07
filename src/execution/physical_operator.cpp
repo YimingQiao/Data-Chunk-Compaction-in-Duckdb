@@ -251,16 +251,8 @@ OperatorResultType CompactingPhysicalOperator::Execute(ExecutionContext &context
                                                        GlobalOperatorState &gstate, OperatorState &state_p) const {
 	auto &state = state_p.Cast<CachingOperatorState>();
 
-	string address = to_string(size_t(this));
-	Profiler profiler_exec;
-	profiler_exec.Start();
-
 	// Execute child operator
 	auto child_result = ExecuteInternal(context, input, chunk, gstate, state);
-
-	double t = profiler_exec.Elapsed();
-	ZebraProfiler::Get().InsertRecord("[" + GetName() + " Execute - Out - 0x" + address + "]", chunk.size(), t);
-	ZebraProfiler::Get().InsertRecord("[" + GetName() + " Execute - In - 0x" + address + "]", input.size(), t);
 
 #if STANDARD_VECTOR_SIZE >= 128
 	if (!state.initialized) {
@@ -274,9 +266,6 @@ OperatorResultType CompactingPhysicalOperator::Execute(ExecutionContext &context
 	if (chunk.size() < compact_threshold) {
 		// we have filtered out a significant amount of tuples
 		// add this chunk to the cache and continue
-		Profiler profiler;
-		profiler.Start();
-
 		if (!state.cached_chunk) {
 			state.cached_chunk = make_uniq<DataChunk>();
 			state.cached_chunk->Initialize(Allocator::Get(context.client), chunk.GetTypes());
@@ -289,20 +278,10 @@ OperatorResultType CompactingPhysicalOperator::Execute(ExecutionContext &context
 		}
 
 		state.cached_chunk->Append(chunk);
-		BeeProfiler::Get().InsertStatRecord("[" + GetName() + " Compact - In - 0x" + address + "]", profiler.Elapsed());
-
-		profiler.Start();
-
 		if (state.cached_chunk->size() >= (STANDARD_VECTOR_SIZE - compact_threshold) ||
 		    child_result == OperatorResultType::FINISHED) {
 			chunk.Move(*state.cached_chunk);
 			state.cached_chunk->Initialize(Allocator::Get(context.client), chunk.GetTypes());
-
-			ZebraProfiler::Get().InsertRecord("[" + GetName() + " Compact - Out - 0x" + address + "]", chunk.size(),
-			                                  profiler.Elapsed());
-			BeeProfiler::Get().InsertStatRecord("[" + GetName() + " Compact - Out - 0x" + address + "]",
-			                                    profiler.Elapsed());
-
 			return child_result;
 		} else {
 			// chunk cache not full return empty result
