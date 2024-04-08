@@ -19,7 +19,7 @@ PhysicalFilter::PhysicalFilter(vector<LogicalType> types, vector<unique_ptr<Expr
 		expression = std::move(select_list[0]);
 	}
 
-	compact_threshold = 127;
+	compact_threshold = std::min(idx_t(127), compact_threshold);
 }
 
 class FilterState : public CachingOperatorState {
