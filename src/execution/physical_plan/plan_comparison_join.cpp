@@ -300,10 +300,6 @@ unique_ptr<PhysicalOperator> PhysicalPlanGenerator::PlanComparisonJoin(LogicalCo
 
 	unique_ptr<PhysicalOperator> plan;
 	if (has_equality && !prefer_range_joins) {
-		// check if we can use an index join
-		if (PlanIndexJoin(context, op, plan, left, right)) {
-			return plan;
-		}
 		// Equality join with small number of keys : possible perfect join optimization
 		PerfectHashJoinStats perfect_join_stats;
 		CheckForPerfectJoinOpt(op, perfect_join_stats);
