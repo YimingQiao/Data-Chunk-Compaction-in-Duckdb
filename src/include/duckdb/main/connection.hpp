@@ -53,7 +53,7 @@ public:
 	DUCKDB_API void Interrupt();
 
 	//! Enable query profiling
-	DUCKDB_API void EnableProfiling(bool disable_output = false);
+	DUCKDB_API void EnableProfiling();
 	//! Disable query profiling
 	DUCKDB_API void DisableProfiling();
 
