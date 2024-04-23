@@ -906,11 +906,12 @@ void ClientContext::Interrupt() {
 	interrupted = true;
 }
 
-void ClientContext::EnableProfiling(bool disable_output) {
+void ClientContext::EnableProfiling() {
 	auto lock = LockContext();
 	auto &config = ClientConfig::GetConfig(*this);
 	config.enable_profiler = true;
-	config.emit_profiler_output = disable_output;
+	// yiqiao: I want to control if it outputs [flag: emit_log]
+	config.emit_profiler_output = true;
 }
 
 void ClientContext::DisableProfiling() {
