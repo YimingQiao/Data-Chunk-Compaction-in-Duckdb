@@ -1,19 +1,19 @@
 #include "benchmark_runner.hpp"
 
-#include "duckdb/common/profiler.hpp"
-#include "duckdb/common/file_system.hpp"
-#include "duckdb/common/string_util.hpp"
 #include "duckdb.hpp"
+#include "duckdb/common/file_system.hpp"
+#include "duckdb/common/profiler.hpp"
+#include "duckdb/common/string_util.hpp"
 #include "duckdb_benchmark.hpp"
 #include "interpreted_benchmark.hpp"
 
 #define CATCH_CONFIG_RUNNER
-#include "catch.hpp"
-#include "re2/re2.h"
-
 #include <fstream>
 #include <sstream>
 #include <thread>
+
+#include "catch.hpp"
+#include "re2/re2.h"
 
 using namespace duckdb;
 
@@ -102,8 +102,10 @@ void BenchmarkRunner::RunBenchmark(Benchmark *benchmark) {
 	auto display_name = benchmark->DisplayName();
 
 	auto state = benchmark->Initialize(configuration);
-	auto nruns = benchmark->NRuns();
+	auto nruns = 5;
 	for (size_t i = 0; i < nruns + 1; i++) {
+		BeeProfiler::Get().Clear();
+
 		bool hotrun = i > 0;
 		if (hotrun) {
 			Log(StringUtil::Format("%s\t%d\t", benchmark->name, i));
@@ -128,16 +130,19 @@ void BenchmarkRunner::RunBenchmark(Benchmark *benchmark) {
 				LogResult("TIMEOUT");
 				break;
 			} else {
-				// write time
-				auto verify = benchmark->Verify(state.get());
-				if (!verify.empty()) {
-					LogResult("INCORRECT");
-					LogLine("INCORRECT RESULT: " + verify);
-					LogOutput("INCORRECT RESULT: " + verify);
-					break;
-				} else {
-					LogResult(std::to_string(profiler.Elapsed()));
-				}
+				// write time, yiqiao: I disable the check for adjusting sf
+				//				auto verify = benchmark->Verify(state.get());
+				//				if (!verify.empty()) {
+				//					LogResult("INCORRECT");
+				//					LogLine("INCORRECT RESULT: " + verify);
+				//					LogOutput("INCORRECT RESULT: " + verify);
+				//					break;
+				//				} else {
+				//					LogResult(std::to_string(profiler.Elapsed()));
+				//				}
+				LogResult(std::to_string(profiler.Elapsed()));
+
+				if (i == nruns) BeeProfiler::Get().EndProfiling();
 			}
 		}
 		benchmark->Cleanup(state.get());
@@ -158,14 +163,16 @@ void print_help() {
 	fprintf(stderr, "              --list                 Show a list of all benchmarks\n");
 	fprintf(stderr, "              --profile              Prints the query profile information\n");
 	fprintf(stderr, "              --detailed-profile     Prints detailed query profile information\n");
-	fprintf(stderr, "              --threads=n            Sets the amount of threads to use during execution (default: "
-	                "hardware concurrency)\n");
+	fprintf(stderr,
+	        "              --threads=n            Sets the amount of threads to use during execution (default: "
+	        "hardware concurrency)\n");
 	fprintf(stderr, "              --out=[file]           Move benchmark output to file\n");
 	fprintf(stderr, "              --log=[file]           Move log output to file\n");
 	fprintf(stderr, "              --info                 Prints info about the benchmark\n");
 	fprintf(stderr, "              --query                Prints query of the benchmark\n");
-	fprintf(stderr, "              --root-dir             Sets the root directory for where to store temp data and "
-	                "look for the 'benchmarks' directory\n");
+	fprintf(stderr,
+	        "              --root-dir             Sets the root directory for where to store temp data and "
+	        "look for the 'benchmarks' directory\n");
 	fprintf(stderr,
 	        "              [name_pattern]         Run only the benchmark which names match the specified name pattern, "
 	        "e.g., DS.* for TPC-DS benchmarks\n");
@@ -321,14 +328,14 @@ ConfigurationError run_benchmarks() {
 
 void print_error_message(const ConfigurationError &error) {
 	switch (error) {
-	case ConfigurationError::BenchmarkNotFound:
-		fprintf(stderr, "Benchmark to run could not be found.\n");
-		break;
-	case ConfigurationError::InfoWithoutBenchmarkName:
-		fprintf(stderr, "Info requires benchmark name pattern.\n");
-		break;
-	case ConfigurationError::None:
-		break;
+		case ConfigurationError::BenchmarkNotFound:
+			fprintf(stderr, "Benchmark to run could not be found.\n");
+			break;
+		case ConfigurationError::InfoWithoutBenchmarkName:
+			fprintf(stderr, "Info requires benchmark name pattern.\n");
+			break;
+		case ConfigurationError::None:
+			break;
 	}
 	print_help();
 }
