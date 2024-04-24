@@ -911,7 +911,7 @@ void ClientContext::EnableProfiling() {
 	auto &config = ClientConfig::GetConfig(*this);
 	config.enable_profiler = true;
 	// yiqiao: I want to control if it outputs [flag: emit_log]
-	config.emit_profiler_output = true;
+	config.emit_profiler_output = false;
 }
 
 void ClientContext::DisableProfiling() {
