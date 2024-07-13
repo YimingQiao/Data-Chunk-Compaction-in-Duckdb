@@ -1,24 +1,4 @@
-<div align="center">
-  <img src="https://duckdb.org/images/logo-dl/DuckDB_Logo-stacked.svg" height="120">
-</div>
-<br>
-
-
-
-
-<p align="center">
-  <a href="https://github.com/duckdb/duckdb/actions">
-    <img src="https://github.com/duckdb/duckdb/actions/workflows/Main.yml/badge.svg?branch=main" alt="Github Actions Badge">
-  </a>
-  <a href="https://discord.gg/tcvwpjfnZx">
-    <img src="https://shields.io/discord/909674491309850675" alt="discord" />
-  </a>
-  <a href="https://github.com/duckdb/duckdb/releases/">
-    <img src="https://img.shields.io/github/v/release/duckdb/duckdb?color=brightgreen&display_name=tag&logo=duckdb&logoColor=white" alt="Latest Release">
-  </a>
-</p>
-
-## Chunk Compaction in the DuckDB
+# Chunk Compaction in the DuckDB
 Since we have showed that the [chunk compaction is important the the vectorized execution](https://github.com/YimingQiao/Chunk-Compaction-in-Vectorized-Execution), we the integrate our compaction solution into the [duckdb](https://github.com/duckdb/duckdb). Our solution consists of the dynamic/learning compaction and the compacted vectorized hash join. 
 
 ## Important Modified Files
