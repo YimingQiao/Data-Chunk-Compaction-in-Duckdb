@@ -18,26 +18,18 @@
   </a>
 </p>
 
-## DuckDB
-DuckDB is a high-performance analytical database system. It is designed to be fast, reliable, portable, and easy to use. DuckDB provides a rich SQL dialect, with support far beyond basic SQL. DuckDB supports arbitrary and nested correlated subqueries, window functions, collations, complex types (arrays, structs), and more. For more information on using DuckDB, please refer to the [DuckDB documentation](https://duckdb.org/docs/).
+## Chunk Compaction in the DuckDB
+Since we have showed that the [chunk compaction is important the the vectorized execution](https://github.com/YimingQiao/Chunk-Compaction-in-Vectorized-Execution), we the integrate our compaction solution into the [duckdb](https://github.com/duckdb/duckdb). Our solution consists of the dynamic/learning compaction and the compacted vectorized hash join. 
 
-## Installation
-If you want to install and use DuckDB, please see [our website](https://www.duckdb.org) for installation and usage instructions.
+## Important Modified Files
+We modify many files of the original duckdb, but files around the Hash Join Operator are the most important, including:
+ - `physical_hash_join.h/cpp`, which contains the hash join operator implemetation.
+ - `join_hashtable.h/cpp`, which contains the used hash table in hash join.
+ - `physical_operator.hpp`, which contains a class called CachingPhysicalOperator/CompactingPhysicalOperator. This operator introduces the compaction strategy used in the original duckdb.
+ - `data_chunk.hpp`, which contains the design of the data chunk.
+ - `profiler.hpp`, which contains several profilers that we use to record the chunk number and chunk size.
 
-## Data Import
-For CSV files and Parquet files, data import is as simple as referencing the file in the FROM clause:
+And, we disable the column compression in our end-to-end benchmark. We use the benchmark code provided by DuckDB, but adjust the scale factor used in the TPC-H and the TPC-DS. 
 
-```sql
-SELECT * FROM 'myfile.csv';
-SELECT * FROM 'myfile.parquet';
-```
-
-Refer to our [Data Import](https://duckdb.org/docs/data/overview) section for more information.
-
-## SQL Reference
-The [website](https://duckdb.org/docs/sql/introduction) contains a reference of functions and SQL constructs available in DuckDB.
-
-## Development 
-For development, DuckDB requires [CMake](https://cmake.org), Python3 and a `C++11` compliant compiler. Run `make` in the root directory to compile the sources. For development, use `make debug` to build a non-optimized debug version. You should run `make unit` and `make allunit` to verify that your version works properly after making changes. To test performance, you can run `BUILD_BENCHMARK=1 BUILD_TPCH=1 make` and then perform several standard benchmarks from the root directory by executing `./build/release/benchmark/benchmark_runner`. The detail of benchmarks is in our [Benchmark Guide](benchmark/README.md).
-
-Please also refer to our [Contribution Guide](CONTRIBUTING.md).
+## Compile and Execution
+We use the same way as the orignal duckdb to compile and execute. Please refer to this [docuement](https://duckdb.org/docs/dev/building/overview.html).  
