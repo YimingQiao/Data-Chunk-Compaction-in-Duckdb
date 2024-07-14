@@ -1,4 +1,13 @@
-# Chunk Compaction in the DuckDB
+# Data Chunk Compaction in the Vectorized Execution
+
+The Supplementary Material of our paper includes three repositories:
+1. [Problem formalization and simulation](https://github.com/YimingQiao/Chunk-Compaction-Formalization)
+2. [Some Microbenchmarks to compare various compaction strategies](https://github.com/YimingQiao/Chunk-Compaction-in-Vectorized-Execution)
+3. **Integrate the Leaning and Logical Compaction into the Duckdb, evaluting the End-to-end performance (Current Repository)**
+
+---
+
+## Chunk Compaction in the DuckDB
 Since we have showed that the chunk compaction is important the the vectorized execution in this [repository](https://github.com/YimingQiao/Chunk-Compaction-in-Vectorized-Execution), we the integrate our compaction solution into the [duckdb](https://github.com/duckdb/duckdb). Our solution consists of the dynamic/learning compaction and the compacted vectorized hash join. 
 
 ## Important Modified Files
