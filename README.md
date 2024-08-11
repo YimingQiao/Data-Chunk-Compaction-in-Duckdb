@@ -1,4 +1,4 @@
-# Data Chunk Compaction in the Vectorized Execution
+# Data Chunk Compaction in Vectorized Execution
 
 The Supplementary Material of our paper includes three repositories:
 1. [Problem formalization and simulation](https://github.com/YimingQiao/Chunk-Compaction-Formalization)
@@ -30,7 +30,7 @@ We use the same way as the orignal duckdb to compile and execute. Please refer t
 `build/release/benchmark/benchmark_runner --list`
 
 #### Run a single benchmark
-`build/release/benchmark/benchmark_runner benchmark/imdb/19d.benchmark'`
+`build/release/benchmark/benchmark_runner 'benchmark/imdb/19d.benchmark'`
 
 The output will be printed to `stdout` in CSV format, in the following format:
 
