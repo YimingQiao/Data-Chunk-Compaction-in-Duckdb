@@ -8,7 +8,7 @@ The Supplementary Material of our paper includes three repositories:
 ---
 
 ## Chunk Compaction in the DuckDB
-Since we have showed that the chunk compaction is important the the vectorized execution in this [repository](https://github.com/YimingQiao/Chunk-Compaction-in-Vectorized-Execution), we the integrate our compaction solution into the [duckdb](https://github.com/duckdb/duckdb). Our solution consists of the dynamic/learning compaction and the compacted vectorized hash join. 
+Since we have showed that the chunk compaction is important the the vectorized execution in that [repository](https://github.com/YimingQiao/Chunk-Compaction-in-Vectorized-Execution), we then integrate our compaction solution into the [duckdb](https://github.com/duckdb/duckdb). Our solution consists of the dynamic/learning compaction and the compacted vectorized hash join. 
 
 ## Important Modified Files
 We modify many files of the original duckdb, but files around the Hash Join Operator are the most important, including:
