@@ -277,14 +277,6 @@ OperatorResultType CompactingPhysicalOperator::Execute(ExecutionContext &context
 			return child_result;
 		}
 
-		// yiqiao: I add this if to exclude the filter compaction, focusing on the hash join.
-		//		if (compact_threshold != 127) {
-		//			std::string loads;
-		//			for (size_t i = 0; i < chunk.size() * 8; ++i)
-		//				loads += "---";
-		//			BeeProfiler::Get().InsertStatRecord(loads, 0.0);
-		//		}
-
 		state.cached_chunk->Append(chunk);
 		if (state.cached_chunk->size() >= (STANDARD_VECTOR_SIZE - compact_threshold) ||
 		    child_result == OperatorResultType::FINISHED) {
