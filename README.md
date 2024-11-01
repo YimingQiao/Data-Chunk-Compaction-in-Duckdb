@@ -1,5 +1,7 @@
 # Data Chunk Compaction in Vectorized Execution
 
+This is the repository for the paper "Data Chunk Compaction in Vectorized Execution", which is accepted by SIGMOD'25.
+
 The Supplementary Material of our paper includes three repositories:
 1. [Problem formalization and simulation](https://github.com/YimingQiao/Chunk-Compaction-Formalization)
 2. [Some Microbenchmarks to compare various compaction strategies](https://github.com/YimingQiao/Chunk-Compaction-in-Vectorized-Execution)
