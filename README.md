@@ -48,7 +48,7 @@ benchmark/imdb/19d.benchmark	5	2.267040
 #### Regex
 You can also use a regex to specify which benchmarks to run. Be careful of shell expansion of certain regex characters (e.g. `*` will likely be expanded by your shell, hence this requires proper quoting or escaping).
 
-`build/release/benchmark/benchmark_runner '(benchmark/imdb/.*)' `
+`build/release/benchmark/benchmark_runner --threads=1 '(benchmark/imdb/.*)' `
 
 #### Run all benchmarks
 Not specifying any argument will run all benchmarks.
