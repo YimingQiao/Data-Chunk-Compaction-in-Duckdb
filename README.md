@@ -26,7 +26,7 @@ We modify many files of the original duckdb, but files around the Hash Join Oper
 And, we disable the column compression and the perfect hash techinique in our end-to-end benchmark. We use the benchmark code provided by DuckDB, but adjust the scale factor used in the TPC-H and the TPC-DS. 
 
 ## Compile and Execution
-We use the same way as the orignal duckdb to compile and execute. Please refer to this [docuement](https://duckdb.org/docs/dev/building/overview.html). 
+We use the same way as the orignal duckdb to compile and execute. Please refer to this [document](https://duckdb.org/docs/dev/building/overview.html). 
 
 #### Build the benchmark
 `BUILD_BENCHMARK=1 BUILD_TPCH=1 BUILD_TPCDS=1 make`
