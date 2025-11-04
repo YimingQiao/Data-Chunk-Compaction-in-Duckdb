@@ -72,15 +72,15 @@ static void TryLoadCompression(DBConfig &config, vector<reference<CompressionFun
 vector<reference<CompressionFunction>> DBConfig::GetCompressionFunctions(const PhysicalType physical_type) {
 	vector<reference<CompressionFunction>> result;
 	TryLoadCompression(*this, result, CompressionType::COMPRESSION_UNCOMPRESSED, physical_type);
-	TryLoadCompression(*this, result, CompressionType::COMPRESSION_RLE, physical_type);
-	TryLoadCompression(*this, result, CompressionType::COMPRESSION_BITPACKING, physical_type);
-	TryLoadCompression(*this, result, CompressionType::COMPRESSION_DICTIONARY, physical_type);
-	TryLoadCompression(*this, result, CompressionType::COMPRESSION_CHIMP, physical_type);
-	TryLoadCompression(*this, result, CompressionType::COMPRESSION_PATAS, physical_type);
-	TryLoadCompression(*this, result, CompressionType::COMPRESSION_ALP, physical_type);
-	TryLoadCompression(*this, result, CompressionType::COMPRESSION_ALPRD, physical_type);
-	TryLoadCompression(*this, result, CompressionType::COMPRESSION_FSST, physical_type);
-	TryLoadCompression(*this, result, CompressionType::COMPRESSION_ZSTD, physical_type);
+	// TryLoadCompression(*this, result, CompressionType::COMPRESSION_RLE, physical_type);
+	// TryLoadCompression(*this, result, CompressionType::COMPRESSION_BITPACKING, physical_type);
+	// TryLoadCompression(*this, result, CompressionType::COMPRESSION_DICTIONARY, physical_type);
+	// TryLoadCompression(*this, result, CompressionType::COMPRESSION_CHIMP, physical_type);
+	// TryLoadCompression(*this, result, CompressionType::COMPRESSION_PATAS, physical_type);
+	// TryLoadCompression(*this, result, CompressionType::COMPRESSION_ALP, physical_type);
+	// TryLoadCompression(*this, result, CompressionType::COMPRESSION_ALPRD, physical_type);
+	// TryLoadCompression(*this, result, CompressionType::COMPRESSION_FSST, physical_type);
+	// TryLoadCompression(*this, result, CompressionType::COMPRESSION_ZSTD, physical_type);
 	return result;
 }
 
