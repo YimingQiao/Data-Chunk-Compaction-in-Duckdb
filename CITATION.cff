@@ -1,11 +1,23 @@
 cff-version: 1.2.0
-message: "If you use this software, please cite it as below."
+message: "If this research artifact contributes to your work, please cite the preferred paper."
+type: software
+title: "Data Chunk Compaction in Vectorized Execution (DuckDB implementation)"
+url: "https://github.com/YimingQiao/Data-Chunk-Compaction-in-Duckdb"
 authors:
-- family-names: "Raasveldt"
-  given-names: "Mark"
-  orcid: "https://orcid.org/0000-0001-5005-6844"
-- family-names: "Muehleisen"
-  given-names: "Hannes"
-  orcid: "https://orcid.org/0000-0001-8552-0029"
-title: "DuckDB"
-url: "https://github.com/duckdb/duckdb"
+  - family-names: "Qiao"
+    given-names: "Yiming"
+  - family-names: "Zhang"
+    given-names: "Huanchen"
+preferred-citation:
+  type: article
+  title: "Data Chunk Compaction in Vectorized Execution"
+  journal: "Proceedings of the ACM on Management of Data"
+  volume: 3
+  issue: 1
+  year: 2025
+  doi: "10.1145/3709676"
+  authors:
+    - family-names: "Qiao"
+      given-names: "Yiming"
+    - family-names: "Zhang"
+      given-names: "Huanchen"
